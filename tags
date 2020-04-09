@@ -191,7 +191,7 @@ LOADER_SIG_LEN	threads/loader.h	22;"	d
 LOADLIBES	utils/Makefile	/^LOADLIBES = -lm$/;"	m
 LOGGING_ENABLE	lib/log.h	7;"	d
 LOGGING_LEVEL	lib/log.h	10;"	d
-LOGGING_LEVEL	userprog/process.c	21;"	d	file:
+LOGGING_LEVEL	userprog/process.c	22;"	d	file:
 LOG_MAX_BEFORE_SIZE	lib/log.h	13;"	d
 LOG_MAX_LOG_SIZE	lib/log.h	14;"	d
 LONG	lib/stdio.c	/^        LONG = 5,               \/* l *\/$/;"	e	enum:printf_conversion::__anon5	file:
@@ -246,16 +246,16 @@ PANIC	lib/debug.h	14;"	d
 PDBITS	threads/pte.h	28;"	d
 PDMASK	threads/pte.h	29;"	d
 PDSHIFT	threads/pte.h	27;"	d
-PE32Ax	userprog/process.c	156;"	d	file:
-PE32Hx	userprog/process.c	158;"	d	file:
-PE32Ox	userprog/process.c	157;"	d	file:
-PE32Wx	userprog/process.c	155;"	d	file:
+PE32Ax	userprog/process.c	206;"	d	file:
+PE32Hx	userprog/process.c	208;"	d	file:
+PE32Ox	userprog/process.c	207;"	d	file:
+PE32Wx	userprog/process.c	205;"	d	file:
 PF_P	userprog/exception.h	5;"	d
-PF_R	userprog/process.c	208;"	d	file:
+PF_R	userprog/process.c	258;"	d	file:
 PF_U	userprog/exception.h	7;"	d
 PF_W	userprog/exception.h	6;"	d
-PF_W	userprog/process.c	207;"	d	file:
-PF_X	userprog/process.c	206;"	d	file:
+PF_W	userprog/process.c	257;"	d	file:
+PF_X	userprog/process.c	256;"	d	file:
 PGBITS	threads/vaddr.h	19;"	d
 PGMASK	threads/vaddr.h	21;"	d
 PGSHIFT	threads/vaddr.h	18;"	d
@@ -330,14 +330,14 @@ PTRDIFF_MAX	lib/stdint.h	47;"	d
 PTRDIFF_MIN	lib/stdint.h	46;"	d
 PTSHIFT	threads/pte.h	21;"	d
 PTSPAN	threads/pte.h	23;"	d
-PT_DYNAMIC	userprog/process.c	198;"	d	file:
-PT_INTERP	userprog/process.c	199;"	d	file:
-PT_LOAD	userprog/process.c	197;"	d	file:
-PT_NOTE	userprog/process.c	200;"	d	file:
-PT_NULL	userprog/process.c	196;"	d	file:
-PT_PHDR	userprog/process.c	202;"	d	file:
-PT_SHLIB	userprog/process.c	201;"	d	file:
-PT_STACK	userprog/process.c	203;"	d	file:
+PT_DYNAMIC	userprog/process.c	248;"	d	file:
+PT_INTERP	userprog/process.c	249;"	d	file:
+PT_LOAD	userprog/process.c	247;"	d	file:
+PT_NOTE	userprog/process.c	250;"	d	file:
+PT_NULL	userprog/process.c	246;"	d	file:
+PT_PHDR	userprog/process.c	252;"	d	file:
+PT_SHLIB	userprog/process.c	251;"	d	file:
+PT_STACK	userprog/process.c	253;"	d	file:
 Prev	tests/Algorithm/Diff.pm	/^sub Prev {$/;"	s
 QUEUE	devices/serial.c	/^static enum { UNINIT, POLL, QUEUE } mode;$/;"	e	enum:__anon1	file:
 RBR_REG	devices/serial.c	21;"	d	file:
@@ -925,6 +925,8 @@ exec	lib/user/syscall.c	/^exec (const char *file)$/;"	f
 exec_children	tests/lib.c	/^exec_children (const char *child_name, pid_t pids[], size_t child_cnt) $/;"	f
 exec_setitimer	utils/pintos	/^sub exec_setitimer {$/;"	s
 exit	lib/user/syscall.c	/^exit (int status)$/;"	f
+exit_status	threads/thread.h	/^    int32_t exit_status;$/;"	m	struct:thread
+exiting	userprog/process.c	/^struct semaphore exiting;$/;"	v	typeref:struct:semaphore
 expand	examples/insult.c	/^expand (int num, char **grammar[], char *location[], int handle)$/;"	f
 expecting_interrupt	devices/ide.c	/^    bool expecting_interrupt;   \/* True if an interrupt is expected, false if$/;"	m	struct:channel	file:
 extend_file	utils/pintos	/^sub extend_file {$/;"	s
@@ -1221,6 +1223,7 @@ kill	userprog/exception.c	/^kill (struct intr_frame *f)$/;"	f	file:
 l_thread_func	tests/threads/priority-donate-sema.c	/^l_thread_func (void *ls_) $/;"	f	file:
 l_thread_func	tests/threads/priority-donate-sema.c	/^static thread_func l_thread_func;$/;"	v	file:
 last_mask	lib/kernel/bitmap.c	/^last_mask (const struct bitmap *b)$/;"	f	file:
+launched	userprog/process.c	/^struct semaphore launched;$/;"	v	typeref:struct:semaphore
 lba_to_chs	utils/Pintos.pm	/^sub lba_to_chs {$/;"	s
 ldt	userprog/tss.c	/^    uint16_t ldt, :16;$/;"	m	struct:tss	file:
 left_alt	devices/kbd.c	/^static bool left_alt, right_alt;        \/* Left and right Alt keys. *\/$/;"	v	file:
@@ -1267,7 +1270,7 @@ list_sort	lib/kernel/list.c	/^list_sort (struct list *list, list_less_func *less
 list_splice	lib/kernel/list.c	/^list_splice (struct list_elem *before,$/;"	f
 list_tail	lib/kernel/list.c	/^list_tail (struct list *list)$/;"	f
 list_unique	lib/kernel/list.c	/^list_unique (struct list *list, struct list *duplicates,$/;"	f
-load	userprog/process.c	/^load (const char *file_name, void (**eip) (void), void **esp)$/;"	f
+load	userprog/process.c	/^load (const char *cmd_str, int argc, void (**eip) (void), void **esp)$/;"	f
 load_kernel	threads/loader.S	/^load_kernel:$/;"	l
 load_segment	userprog/process.c	/^load_segment (struct file *file, off_t ofs, uint8_t *upage,$/;"	f	file:
 load_thread	tests/threads/mlfqs-fair.c	/^load_thread (void *ti_) $/;"	f	file:
@@ -1545,7 +1548,7 @@ priority_condvar_thread	tests/threads/priority-condvar.c	/^static thread_func pr
 priority_sema_thread	tests/threads/priority-sema.c	/^priority_sema_thread (void *aux UNUSED) $/;"	f	file:
 priority_sema_thread	tests/threads/priority-sema.c	/^static thread_func priority_sema_thread;$/;"	v	file:
 process_activate	userprog/process.c	/^process_activate (void)$/;"	f
-process_execute	userprog/process.c	/^process_execute (const char *file_name)$/;"	f
+process_execute	userprog/process.c	/^process_execute (const char *command)$/;"	f
 process_exit	userprog/process.c	/^process_exit (void)$/;"	f
 process_wait	userprog/process.c	/^process_wait (tid_t child_tid UNUSED)$/;"	f
 pt_no	threads/pte.h	/^static inline unsigned pt_no (const void *va) {$/;"	f
@@ -1691,7 +1694,7 @@ set_realtime	utils/pintos	/^sub set_realtime {$/;"	s
 set_serial	devices/serial.c	/^set_serial (int bps)$/;"	f	file:
 set_sim	utils/pintos	/^sub set_sim {$/;"	s
 set_vga	utils/pintos	/^sub set_vga {$/;"	s
-setup_stack	userprog/process.c	/^setup_stack (void **esp)$/;"	f	file:
+setup_stack	userprog/process.c	/^setup_stack (const char *cmd_str, int argc, void **esp)$/;"	f	file:
 shell_SRC	examples/Makefile	/^shell_SRC = shell.c$/;"	m
 shifted_keymap	devices/kbd.c	/^static const struct keymap shifted_keymap[] =$/;"	v	typeref:struct:keymap	file:
 shuffle	tests/internal/list.c	/^shuffle (struct value *array, size_t cnt) $/;"	f	file:
@@ -1743,7 +1746,7 @@ start	tests/threads/alarm-wait.c	/^    int64_t start;              \/* Current t
 start	threads/loader.S	/^start:$/;"	l
 start	threads/start.S	/^start:$/;"	l
 startLoc	examples/insult.c	/^char startLoc[] = { 3, 0, 4, 7, 16 };$/;"	v
-start_process	userprog/process.c	/^start_process (void *file_name_)$/;"	f	file:
+start_process	userprog/process.c	/^start_process (void *command_)$/;"	f	file:
 start_time	tests/threads/mlfqs-fair.c	/^    int64_t start_time;$/;"	m	struct:thread_info	file:
 start_time	tests/threads/mlfqs-load-60.c	/^static int64_t start_time;$/;"	v	file:
 start_time	tests/threads/mlfqs-load-avg.c	/^static int64_t start_time;$/;"	v	file:
@@ -1778,6 +1781,8 @@ switch_entry	threads/switch.S	/^switch_entry:$/;"	l
 switch_entry_frame	threads/switch.h	/^struct switch_entry_frame$/;"	s
 switch_threads	threads/switch.S	/^switch_threads:$/;"	l
 switch_threads_frame	threads/switch.h	/^struct switch_threads_frame$/;"	s
+sys_exit	userprog/syscall.c	/^void sys_exit (int status) {$/;"	f
+sys_write	userprog/syscall.c	/^int sys_write(int fd, void *buffer, unsigned size) {$/;"	f
 syscall0	lib/user/syscall.c	6;"	d	file:
 syscall1	lib/user/syscall.c	19;"	d	file:
 syscall2	lib/user/syscall.c	33;"	d	file:
@@ -2000,6 +2005,7 @@ timer_sleep	devices/timer.c	/^timer_sleep (int64_t ticks)$/;"	f
 timer_ticks	devices/timer.c	/^timer_ticks (void)$/;"	f
 timer_udelay	devices/timer.c	/^timer_udelay (int64_t us)$/;"	f
 timer_usleep	devices/timer.c	/^timer_usleep (int64_t us)$/;"	f
+tokenize_cmd	userprog/process.c	/^tokenize_cmd(char *cmd_str) {$/;"	f	file:
 tolower	lib/ctype.h	/^static inline int tolower (int c) { return isupper (c) ? c - 'A' + 'a' : c; }$/;"	f
 too_many_loops	devices/timer.c	/^too_many_loops (unsigned loops)$/;"	f	file:
 toupper	lib/ctype.h	/^static inline int toupper (int c) { return islower (c) ? c - 'a' + 'A' : c; }$/;"	f

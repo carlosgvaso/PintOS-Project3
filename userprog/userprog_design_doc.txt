@@ -34,6 +34,47 @@ FirstName LastName <email@utexas.edu>
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
 
+We tokenize the string containing the arguments inside the `start_process()`
+function in `process.c`, so we can pass the tokenized command to `load()`
+(which loads the command binary) which will in time pass it to `setup_stack()`
+(to load the arguments on the stack). The arguments are tokenized by modifying
+the original string in place using `strtok_r()`, and keeping a count of the
+tokens found (`argc`). Once we know the number of tokens (`argc`), we can use
+pointer arithmetic to iterate over all the tokens in the command string. This
+approach saves memory, because we only need a string and an integer to be
+saved in memory. There is no need to have an array of pointers to each token in
+the string, because we can generate that any time we need it.
+
+Both the tokenized string and `argc` are passed to `load()` and
+`setup_stack()`. The `load()` function only uses the first argument to load the
+binary. This argument is easily copied from the tokenized string, since
+arguments are separated by `\0`, which C uses to find the ends of strings. In
+`setup_stack()` we use pointer arithmetic to extract all the tokens from the
+command string and load them into the stack as described in the documentation.
+
+This is done by writing from the PHYS_BASE down the argument strings in reverse
+order (last argument gets written first). For this, we point the ESP to the
+PHYS_BASE, and we decrement it by the length of the argument to be written to
+the stack. Then, we write the argument, and repeat for the rest of the
+arguments.
+
+Then, we add any necessary padding as calculated by the following
+formula: `(aling - (offset mod aling)) mod aling`. The modulus operator is
+represented as `mod`, `aling` is the 4-byte alingment required by the x86
+architecture, and offset is the total length of the command string in the stack
+including all the `\0` characters. We increment the ESP by any padding
+characters added to the stack.
+
+Then, we set a NULL pointer to represent the end of the `arv` array as required
+by the x86 architecture, and we load pointers to the beginning of each token
+loaded to the stack in reverse order (last token first). Also, we add a pointer
+(`argv`) to the first entry of the array (`argv[0]`). We increment the ESP in
+word increments by each pointer added to the stack (including the NULL
+pointer).
+
+Finally, we add `argc` and the return address as separate words to the stack,
+and we increment the ESP by 2 words to point to the return address.
+
 ---- RATIONALE ----
 
 >> A3: Why does Pintos implement strtok_r() but not strtok()?

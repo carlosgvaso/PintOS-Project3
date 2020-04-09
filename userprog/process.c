@@ -28,7 +28,8 @@ struct semaphore launched;
 struct semaphore exiting;
 
 static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool load (const char *cmd_str, int argc, void (**eip) (void),
+		void **esp);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -54,7 +55,7 @@ process_execute (const char *command)
   strlcpy (cmd_copy, command, PGSIZE);
 
   sema_init(&launched, 0); // FIXME: should be t->launched when the semaphore is added to the threads struct
-  sema_init(&exiting, 0);  // FIXME: should be t->launched when the semaphore is added to the threads struct
+  sema_init(&exiting, 0);  // FIXME: should be t->exiting when the semaphore is added to the threads struct
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (command, PRI_DEFAULT, start_process, cmd_copy);
@@ -66,6 +67,29 @@ process_execute (const char *command)
   return tid;
 }
 
+/* A function to break the command string into tokens sepparated by `\0`.
+ *
+ * It returns the token count in the command.
+ *
+ * To iterate over tokens, use pointer arithmetic. The first token starts at
+ * `&cmd_str`, and it is of length `strlen(cmd_str)`. The second token is at
+ * address `char * token = &cmd_str + strlen(cmd_str) + 1` (the `+ 1` is to
+ * account for the `\0` at the end of the last token), and its lenght is
+ * `strlen(token)`. Repeat this process until you reach the token_count amount
+ * of tokens to retrieve all the tokens. */
+static int
+tokenize_cmd(char *cmd_str) {
+	char *token, *save_ptr;
+	int tok_count = 0;
+
+	for (token = strtok_r (cmd_str, " ", &save_ptr); token != NULL;
+			token = strtok_r (NULL, " ", &save_ptr)) {
+		tok_count++;
+	}
+
+	return tok_count;
+}
+
 /* A thread function that loads a user process and starts it
    running. */
 static void
@@ -75,18 +99,19 @@ start_process (void *command_)
   struct intr_frame if_;
   bool success;
 
-  /* TODO: Break command string into tokens
-   * First token will be the executable
-   * If the command has no args, then command = executable */
-
   log(L_TRACE, "start_process()");
+
+  /* Break command string into tokens
+   * See the `tokenize_cmd()` function for instructions on how to retrieve the
+   * tokens from the returned string and argument count. */
+  int argc = tokenize_cmd(cmd_str);
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (cmd_str, &if_.eip, &if_.esp);
+  success = load (cmd_str, argc, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
   palloc_free_page (cmd_str);
@@ -118,10 +143,11 @@ int
 process_wait (tid_t child_tid UNUSED)
 {
   // Wait for child process to exit, and reap its exit status
-  sema_down(&exiting); // FIXME: should be t->launched when the semaphore is added to the threads struct
+  sema_down(&exiting); // FIXME: should be t->exiting when the semaphore is added to the threads struct
 
   // Here the child has exited. Get the childs exit status from its thread and return it
 
+  // FIXME: Return the child exit status
   return -1;
 }
 
@@ -231,7 +257,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (const char *cmd_str, void **esp);
+static bool setup_stack (const char *cmd_str, int argc, void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -242,7 +268,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *cmd_str, void (**eip) (void), void **esp)
+load (const char *cmd_str, int argc, void (**eip) (void), void **esp)
 {
   log(L_TRACE, "load()");
   struct thread *t = thread_current ();
@@ -258,7 +284,10 @@ load (const char *cmd_str, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
-  /* The file to be opened and loaded is the first token of the cmd_str */
+  /* The file to be opened and loaded is the first token of the cmd_str.
+   * Since cmd_str was tokenized in start_thread(), there should be `\0` chars
+   * separating all the tokens, and only the chars before the first `\0` (first
+   * token) is used for most string operations. */
   const char *file_name = cmd_str;
 
   /* Open executable file. */
@@ -342,7 +371,7 @@ load (const char *cmd_str, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (cmd_str, esp))
+  if (!setup_stack (cmd_str, argc, esp))
     goto done;
 
   /* Start address. */
@@ -469,13 +498,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory.
   
-   Must populate the stack with arguments: Ret_addr(0):argc:argv:argv[0]:argv[1]... */
+   Must populate the stack with arguments: Ret_addr(0):argc:argv:argv[0]:
+   argv[1]... */
 static bool
-setup_stack (const char *cmd_str, void **esp)
+setup_stack (const char *cmd_str, int argc, void **esp)
 {
   uint8_t *kpage;
-  char *espchar, *argv0ptr;
-  uint32_t *espword;
   bool success = false;
 
   log(L_TRACE, "setup_stack()");
@@ -486,32 +514,68 @@ setup_stack (const char *cmd_str, void **esp)
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success) {
         *esp = PHYS_BASE;
-        /* FIXME: this is a temporary hack to pass the args-none test
-           The generic solution will involve parsing the command and populating
-           the stack accordingly */
-        int len = strlen(cmd_str) + 1;
-        *esp -= len;
-        strlcpy(*esp, cmd_str, len);
-        espchar = (char *)(*esp);
-        argv0ptr = espchar;
-        espchar--;
-        *espchar = 0;    // padding
-        espchar--;
-        *espchar = 0;    // padding
-        *esp -=6;   // padding and null
-        espword = (uint32_t *)(*esp);
-        *espword = 0;
-        espword--;
-        *espword = argv0ptr;
-        char *argvptr = espword;
-        *esp -= 8;
-        espword = (uint32_t *)(*esp);
-        *espword = argvptr; // argv points to argv[0]
-        espword--;
-        *espword = 1;   // argc
-        espword--;
-        *espword = 0;   // return address
-        *esp = espword;
+
+		// Find the address of each argument on the tokenized string
+		const char *argv[argc];	// To track the location of arguments in cmd_str
+		char *argv_stack[argc];	// To track the location of arguments in stack
+		const char *token = cmd_str;	// Token address in cmd_str
+		char *espchar;		// char address in stack
+		uint32_t *espword;	// word address in stack
+		int len_tok = 0;	// Token length including trailing `\0`
+		int len_str = 0;	// Total cmd_str length including trailing `\0`
+
+		// Get pointers to all arguments on an array for easy access
+		for (int i=0; i<argc; ++i) {
+			argv[i] = token;
+			len_tok = strlen(token) + 1;
+			token += len_tok;
+		}
+
+		// Add arguments to stack
+		len_tok = 0;
+		for (int i=argc-1; i>=0; --i) {
+			len_tok = strlen(argv[i]) + 1;	// Find length of argument + `\0`
+			*esp -= len_tok;	// Move esp ponter to fit argument in stack
+			len_str += len_tok;	// Sum to total length of string
+			strlcpy(*esp, argv[i], len_tok);	// Copy argument to stack
+			argv_stack[i] = (char *) (*esp);	// Save argument's stack address
+		}
+
+		/* Add padding if needed
+		   The formula used to find the bytes required to align the start of
+		   the string is: (aling - (offset mod aling)) mod aling */
+		espchar = (char *) (*esp);	// Point token to the current top of stack
+		for (int i=0; i<((4 - (len_str % 4)) % 4); ++i) {
+			*esp -= 1;		// Move top of stack to fit byte
+			espchar--;		// Move pointer to fit byte
+			*espchar = 0;	// Add padding byte
+		}
+
+		// Add argv[] to stack
+		*esp -= 4;	// Move top of stack to fit NULL last argv entry
+		espword = (uint32_t *) (*esp);	// Move pointer to top of stack
+		*espword = 0;	// Add NULL last argv entry
+
+		for (int i=argc-1; i>=0; --i) {	// Add pointers to all arguments
+			*esp -= 4;					// Move top of stack to fit a word
+			espword--;					// Move pointer to fit a word
+			*espword = (uint32_t) argv_stack[i];	// Add pointer to argv[i] addr in stack
+		}
+
+		char *argvptr = (char *) espword;	// Save argv[0] address
+		*esp -= 4;			// Move top of stack to fit a word
+		espword--;			// Move pointer to fit a word
+		*espword = (uint32_t) argvptr;	// Add argv pointer to argv[0]
+		
+		// Add argc to stack
+		*esp -= 4;		// Move top of stack to fit a word
+		espword--;		// Move pointer to fit a word
+		*espword = argc;	// Add argc to stack
+
+		// Add return address to stack
+		*esp -= 4;		// Move top of stack to fit a word
+		espword--;		// Move pointer to fit a word
+		*espword = 0;	// TODO: Add return address to stack
 	  }
       else {
         palloc_free_page (kpage);
