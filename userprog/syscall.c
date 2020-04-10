@@ -3,8 +3,10 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "devices/shutdown.h"
 
 static void syscall_handler (struct intr_frame *);
+void sys_halt(void);
 int sys_write(int fd, void *buffer, unsigned size);
 void sys_exit (int status);
 
@@ -25,23 +27,23 @@ syscall_handler (struct intr_frame *f UNUSED)
   callNo = (uint32_t)(*user_esp);
 
   switch(callNo) {
-      case SYS_HALT:    // Shutdown machine
-          shutdown_power_off();
-          break;
-      case SYS_WRITE:   // Called to output to either a file or stdout
-          user_esp++;
-          arg1 = (uint32_t)(*user_esp);
-          user_esp++;
-          arg2 = (uint32_t)(*user_esp);
-          user_esp++;
-          arg3 = (uint32_t)(*user_esp);
-          f->eax = sys_write((int)arg1, (char *)arg2, (unsigned)arg3);
-          break;
-      case SYS_EXIT:
-          user_esp++;
-          arg1 = (uint32_t)(*user_esp); // Exit status
-          sys_exit ((int)arg1);
-          break;
+    case SYS_HALT:    // Shutdown machine
+      sys_halt();
+      break;
+    case SYS_WRITE:   // Called to output to either a file or stdout
+      user_esp++;
+      arg1 = (uint32_t)(*user_esp);
+      user_esp++;
+      arg2 = (uint32_t)(*user_esp);
+      user_esp++;
+      arg3 = (uint32_t)(*user_esp);
+      f->eax = sys_write((int)arg1, (char *)arg2, (unsigned)arg3);
+      break;
+    case SYS_EXIT:
+      user_esp++;
+      arg1 = (uint32_t)(*user_esp); // Exit status
+      sys_exit ((int)arg1);
+      break;
   }
 
   /* Original code
@@ -52,52 +54,63 @@ syscall_handler (struct intr_frame *f UNUSED)
 }
 
 /**
+ * /brief System Call: void halt (void)
+ * 
+ * Terminates Pintos by calling shutdown_power_off() (declared in
+ * threads/init.h). This should be seldom used, because you lose some
+ * information about possible deadlock situations, etc.
+ */
+void sys_halt(void) {
+  //shutdown_power_off();
+}
+
+/**
  * /brief System Call: int write (int fd, const void *buffer, unsigned size)
  *
- * Writes size bytes from buffer to the open file fd. Returns the number of bytes actually written,
- * which may be less than size if some bytes could not be written. Writing past end-of-file would
- * normally extend the file, but file growth is not implemented by the basic file system. The
- * expected behavior is to write as many bytes as possible up to end-of-file and return the actual
- * number written, or 0 if no bytes could be written at all.
+ * Writes size bytes from buffer to the open file fd. Returns the number of
+ * bytes actually written, which may be less than size if some bytes could not
+ * be written. Writing past end-of-file would normally extend the file, but
+ * file growth is not implemented by the basic file system. The expected
+ * behavior is to write as many bytes as possible up to end-of-file and return
+ * the actual number written, or 0 if no bytes could be written at all.
  *
- * Fd 1 writes to the console. Your code to write to the console should write all of buffer in one
- * call to putbuf(), at least as long as size is not bigger than a few hundred bytes. (It is
- * reasonable to break up larger buffers.) Otherwise, lines of text output by different processes
- * may end up interleaved on the console, confusing both human readers and our grading scripts.
+ * Fd 1 writes to the console. Your code to write to the console should write
+ * all of buffer in one call to putbuf(), at least as long as size is not
+ * bigger than a few hundred bytes. (It is reasonable to break up larger
+ * buffers.) Otherwise, lines of text output by different processes may end up
+ * interleaved on the console, confusing both human readers and our grading
+ * scripts.
  */
 int sys_write(int fd, void *buffer, unsigned size) {
-    if (fd==1) { // Stdout
-        putbuf(buffer, size);
-        return (size);
-    }
+  if (fd==1) { // Stdout
+    putbuf(buffer, size);
+    return (size);
+  }
 
-    // TODO: Handle writing to other fds besides stdout
+  // TODO: Handle writing to other fds besides stdout
+  return (0);
 }
 
 /**
  * \brief System Call: void exit (int status)
  *
- * Terminates the current user program, returning status to the kernel. If the process's parent
- * waits for it (see below), this is the status that will be returned. Conventionally, a status
- * of 0 indicates success and nonzero values indicate errors.
+ * Terminates the current user program, returning status to the kernel. If the
+ * process's parent waits for it (see below), this is the status that will be
+ * returned. Conventionally, a status of 0 indicates success and nonzero values
+ * indicate errors.
  */
 void sys_exit (int status) {
-    struct thread *current_thread = thread_current();
+  struct thread *current_thread = thread_current();
 
-    current_thread->exit_status = status;
-    printf("%s: exit(%d)\n", current_thread->name, status);
+  current_thread->exit_status = status;
+  printf("%s: exit(%d)\n", current_thread->name, status);
 
-    // TODO: Pass this status to a waiting parent
+  // TODO: Pass this status to a waiting parent
 
-    thread_exit();  // Cleanup and de-allocation and waiting for parent to reap exit status
+  thread_exit();  // Cleanup and de-allocation and waiting for parent to reap exit status
 }
 
 /*
-System Call: void halt (void)
-Terminates Pintos by calling shutdown_power_off() (declared in threads/init.h). This should be seldom used, because you lose some information about possible deadlock situations, etc.
-
-System Call: void exit (int status)
-Terminates the current user program, returning status to the kernel. If the process's parent waits for it (see below), this is the status that will be returned. Conventionally, a status of 0 indicates success and nonzero values indicate errors.
 
 System Call: pid_t exec (const char *cmd_line)
 Runs the executable whose name is given in cmd_line, passing any given arguments, and returns the new process's program id (pid). Must return pid -1, which otherwise should not be a valid pid, if the program cannot load or run for any reason. Thus, the parent process cannot return from the exec until it knows whether the child process successfully loaded its executable. You must use appropriate synchronization to ensure this.
@@ -139,13 +152,6 @@ Returns the size, in bytes, of the file open as fd.
 
 System Call: int read (int fd, void *buffer, unsigned size)
 Reads size bytes from the file open as fd into buffer. Returns the number of bytes actually read (0 at end of file), or -1 if the file could not be read (due to a condition other than end of file). Fd 0 reads from the keyboard using input_getc().
-
-System Call: int write (int fd, const void *buffer, unsigned size)
-Writes size bytes from buffer to the open file fd. Returns the number of bytes actually written, which may be less than size if some bytes could not be written.
-Writing past end-of-file would normally extend the file, but file growth is not implemented by the basic file system. The expected behavior is to write as many bytes as possible up to end-of-file and return the actual number written, or 0 if no bytes could be written at all.
-
-Fd 1 writes to the console. Your code to write to the console should write all of buffer in one call to putbuf(), at least as long as size is not bigger than a few hundred bytes. (It is reasonable to break up larger buffers.) Otherwise, lines of text output by different processes may end up interleaved on the console, confusing both human readers and our grading scripts.
-
 
 System Call: void seek (int fd, unsigned position)
 Changes the next byte to be read or written in open file fd to position, expressed in bytes from the beginning of the file. (Thus, a position of 0 is the file's start.)

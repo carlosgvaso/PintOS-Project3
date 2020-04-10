@@ -3,6 +3,12 @@
 
 #include "threads/thread.h"
 
+typedef struct cmd_ {
+    char *cmd_str;
+    char **argv;
+    int argc;
+} cmd_t;
+
 tid_t process_execute (const char *file_name);
 int process_wait (tid_t);
 void process_exit (void);
