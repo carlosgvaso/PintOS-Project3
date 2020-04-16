@@ -56,7 +56,11 @@ process_execute (const char *command)
     return TID_ERROR;
   strlcpy (cmd_copy, command, PGSIZE);
 
-  // Parse the command 
+  /* Parse the command
+   * Use `strtok_r()` to find all the white-space separated tokens (words), and
+   * save pointers to those tokens in an array. The array is dynamically
+   * allocated, so DO NOT forget to free it after your are done usign it.
+   */ 
   cmd.cmd_str = cmd_copy;
   cmd.argv = (char **) malloc(sizeof(char *));
   cmd.argc = 0;
@@ -93,7 +97,12 @@ process_execute (const char *command)
 static void
 start_process (void *command_)
 {
-  cmd_t *cmd = command_;
+  /* Make a copy of the command as this thread's local variable to ensure it
+   * doesn't get overwritten if process_execute get's called again. We are
+   * responsible for freeing any dinamically allocated stuff in COMMAND_ from
+   * here on.
+   */
+  cmd_t cmd = *(cmd_t *)command_;
   struct intr_frame if_;
   bool success;
 
@@ -104,11 +113,11 @@ start_process (void *command_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (cmd, &if_.eip, &if_.esp);
+  success = load (&cmd, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (cmd->cmd_str);
-  free(cmd->argv);  // Free dynamically assigned array
+  palloc_free_page (cmd.cmd_str); // Free page
+  free(cmd.argv);  // Free dynamically allocated array
   if (!success)
     thread_exit ();
 
@@ -279,10 +288,10 @@ load (cmd_t *cmd, void (**eip) (void), void **esp)
   process_activate ();
 
   /* The file to be opened and loaded is the first token of the cmd_str.
-   * Since cmd_str was tokenized in start_thread(), there should be `\0` chars
-   * separating all the tokens, and only the chars before the first `\0` (first
-   * token) is used for most string operations. */
-  const char *file_name = cmd->cmd_str;
+   * Since cmd_str was tokenized in process_execute(), the command should be
+   * in the first argument (`cmd->argv[0]`).
+   */
+  const char *file_name = cmd->argv[0];
 
   /* Open executable file. */
   file = filesys_open (file_name);

@@ -8,8 +8,8 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@utexas.edu>
-FirstName LastName <email@utexas.edu>
+Jose Carlos Martinez Garcia-Vaso <carlosgvaso@utexas.edu>
+Utkarsh Vardan <uvardan@utexas.edu>
 
 ---- PRELIMINARIES ----
 
@@ -28,56 +28,83 @@ FirstName LastName <email@utexas.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+typedef struct cmd_ {
+  char *cmd_str;
+  char **argv;
+  int argc;
+} cmd_t;
+
+It holds the parsed user command, and a way to easily access each command
+argument to load it into the stack.
+
+
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
 
-We tokenize the string containing the arguments inside the `start_process()`
-function in `process.c`, so we can pass the tokenized command to `load()`
-(which loads the command binary) which will in time pass it to `setup_stack()`
-(to load the arguments on the stack). The arguments are tokenized by modifying
-the original string in place using `strtok_r()`, and keeping a count of the
-tokens found (`argc`). Once we know the number of tokens (`argc`), we can use
-pointer arithmetic to iterate over all the tokens in the command string. This
-approach saves memory, because we only need a string and an integer to be
-saved in memory. There is no need to have an array of pointers to each token in
-the string, because we can generate that any time we need it.
+We parse the string containing the arguments inside the `process_execute()`
+function in `process.c`, and we save the results into the `cmd_` struct defined
+in `process.h`. The arguments are parsed by using `strtok_r()` to tokenize the
+original command string in place (`cmd_str`), saving the pointers pointing to
+the initial character of each token (argument) in an array (`argv`), and
+keeping a count of the total number tokens (arguments) found (`argc`). All this
+is organized in the `cmd_` struct for easy passing to the functions that
+require it. By tokenizing, we mean to break the command string into white-space
+separated tokens or words, which are considered as the command arguments.
 
-Both the tokenized string and `argc` are passed to `load()` and
-`setup_stack()`. The `load()` function only uses the first argument to load the
-binary. This argument is easily copied from the tokenized string, since
-arguments are separated by `\0`, which C uses to find the ends of strings. In
-`setup_stack()` we use pointer arithmetic to extract all the tokens from the
-command string and load them into the stack as described in the documentation.
+By saving the parsed command in a struct, we can pass the command struct as the
+argument to `start_process()`. Then, `start_process()` saves the struct to a
+local variable of its thread, and it passes a pointer to the struct to
+`load()`. The `load()` function uses the first argument to load the program
+binary, and it passes the pointer to the command struct to `setup_stack()`,
+which loads the arguments into the stack as per the requirements.
 
-This is done by writing from the PHYS_BASE down the argument strings in reverse
-order (last argument gets written first). For this, we point the ESP to the
-PHYS_BASE, and we decrement it by the length of the argument to be written to
-the stack. Then, we write the argument, and repeat for the rest of the
-arguments.
+Loading the aruguments into the stack is done by writing from the PHYS_BASE
+down the argument strings in reverse order (last argument gets written first).
+For this, we point the ESP to the PHYS_BASE, and we decrement it by the length
+of the argument to be written to the stack, which we can get using
+`strlen(cmd->argv[i])`. Then, we write the argument to the stack location
+pointed by ESP, and repeat it for the rest of the arguments in a loop form the
+last argument `cmd->argv[cmd->argc-1]` to the first `cmd->argv[0]`.
 
-Then, we add any necessary padding as calculated by the following
-formula: `(aling - (offset mod aling)) mod aling`. The modulus operator is
-represented as `mod`, `aling` is the 4-byte alingment required by the x86
-architecture, and offset is the total length of the command string in the stack
-including all the `\0` characters. We increment the ESP by any padding
-characters added to the stack.
+Then, we add any necessary padding to align the `argv` array in the stack as
+calculated by the following formula: `(aling - (offset mod aling)) mod aling`.
+The modulus operator is represented as `mod`, `aling` is the 4-byte alingment
+required by the x86 architecture, and `offset` is the total length of the
+command string in the stack including all the `\0` characters. We also
+decrement the ESP by any padding characters added to the stack.
 
-Then, we set a NULL pointer to represent the end of the `arv` array as required
-by the x86 architecture, and we load pointers to the beginning of each token
-loaded to the stack in reverse order (last token first). Also, we add a pointer
-(`argv`) to the first entry of the array (`argv[0]`). We increment the ESP in
-word increments by each pointer added to the stack (including the NULL
-pointer).
+Then, we set a NULL pointer to represent the end of the `argv` array as
+required by the x86 architecture, and we load pointers to the beginning
+character of each argument previously loaded to the stack in reverse order
+(last argument first). Also, we add a pointer (`argv`) to the first entry of
+the array (`argv[0]`). Before we add each `argv` pointer entry, we decrement
+the ESP in word increments each time a pointer is going to be added to the
+stack (including the NULL pointer).
 
 Finally, we add `argc` and the return address as separate words to the stack,
-and we increment the ESP by 2 words to point to the return address.
+and we decrement the ESP by 2 words to point to the return address. As
+previously, the ESP is decremented before we add the items to the stack in
+practice, so we can use it to know where in the stack we should begin to write.
+
+TODO: How do you avoid overflowing the stack page?
+
 
 ---- RATIONALE ----
 
 >> A3: Why does Pintos implement strtok_r() but not strtok()?
+
+This is because the kernel is a multithreaded program, and multiple threads can
+call the `strtok_r()` function simultaneously. Therefore, that function must be
+reentrant, in order to be thread-safe. In the kernel, `strtok()` cannot safely
+store its current position in the string in a global or static variable, as
+this variable might get overwritten by a call to `strtok()` by another thread.
+This is why `strtok_r()` requires an extra argument to save its current
+position in the string in a local variable of the thread, which makes
+`strtoc_r()` reentrant and thread-safe.
+
 
                              SYSTEM CALLS
                              ============
