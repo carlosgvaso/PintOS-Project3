@@ -89,7 +89,14 @@ and we decrement the ESP by 2 words to point to the return address. As
 previously, the ESP is decremented before we add the items to the stack in
 practice, so we can use it to know where in the stack we should begin to write.
 
-TODO: How do you avoid overflowing the stack page?
+To avoid overflowing the stack page, we could keep a count of the amount of
+data written to the stack page (e.i. command string, argv, argc, etc), and
+loading another page if we fill up the initial page (write 4kB to the page).
+Since we know the page size (4kB), any data over that limit should go to the
+second page. Moreover, if we have more data than it fits in 2 pages, we can
+load it in as many other pages that we need. Finally, we probably need to
+devise a way for the pages to be read in order. This ca be done by ading a
+pointer in the end of a page to the address of the beginning of the new page.
 
 
 ---- RATIONALE ----
