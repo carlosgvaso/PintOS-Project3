@@ -3,6 +3,8 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/synch.h"
+#include "threads/vaddr.h"
 #include "devices/shutdown.h"
 #include "userprog/process.h"
 
@@ -36,6 +38,9 @@ static const uint8_t syscall_argc[20] = {
   0   // SYS_INUMBER
 };
 
+// Lock to limit access to the filesystem to a single thread
+struct lock fs_lock;
+
 static void syscall_handler (struct intr_frame *);
 void sys_halt (void);
 void sys_exit (int status);
@@ -54,6 +59,9 @@ void sys_close (int fd);
 void
 syscall_init (void)
 {
+  // Initialize filesystem lock
+  lock_init(&fs_lock);
+
   // Register a handler for TRAP (interrupt 0x30)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
@@ -129,6 +137,108 @@ syscall_handler (struct intr_frame *f UNUSED)
       sys_close((int)argv[0]);
       break;
   }
+}
+
+/* Reads a byte at user virtual address UADDR.
+ * 
+ * UADDR must be below PHYS_BASE.
+ * 
+ * Returns the byte value if successful, -1 if a segfault occurred.
+ */
+static int
+get_user (const uint8_t *uaddr)
+{
+  int result;
+  asm ("movl $1f, %0; movzbl %1, %0; 1:"
+       : "=&a" (result) : "m" (*uaddr));
+  return result;
+}
+
+/* Writes BYTE to user address UDST.
+ * 
+ * UDST must be below PHYS_BASE.
+ * 
+ * Returns true if successful, false if a segfault occurred.
+ */
+static bool
+put_user (uint8_t *udst, uint8_t byte)
+{
+  int error_code;
+  asm ("movl $1f, %0; movb %b2, %1; 1:"
+       : "=&a" (error_code), "=m" (*udst) : "q" (byte));
+  return error_code != -1;
+}
+
+/* Checks if the pointer is valid for reading
+ *
+ * Checks is a pointer is below the PHYS_BASE, and if we can read from the
+ * first and last bytes in the buffer.
+ *
+ * \param pointer Pointer to check
+ * \param size    Size of buffer in the pointer
+ * \return  True if pointer is valid for reading, false otherwise
+ */
+static bool is_valid_read_pt(void *pointer, int size) {
+  void *pt = pointer;
+
+  // Check if pointer is below PHYS_BASE
+  if (pt >= PHYS_BASE) {
+    return false;
+  }
+  
+  // Check if we can read from the first location in buffer
+  if (get_user(pt) == -1) {
+    return false;
+  }
+  
+  if (size > 1) {
+    for (int i=0; i<size; ++i) {  // Move pointer to last location in buffer
+      ++pt;
+    }
+
+    // Check if we can read from the last location in buffer
+    if (get_user(pt) == -1) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/* Checks if the pointer is valid for writing
+ *
+ * Checks is a pointer is below the PHYS_BASE, and if we can write to the first
+ * and last bytes in the buffer.
+ *
+ * \param pointer Pointer to check
+ * \param size    Size of buffer in the pointer
+ * \return  True if pointer is valid for writing, false otherwise
+ */
+static bool is_valid_write_pt(void *pointer, int size) {
+  void *pt = pointer;
+
+  // Check if pointer is below PHYS_BASE
+  if (pt >= PHYS_BASE) {
+    return false;
+  }
+  
+  // Check if we can write to the first location in buffer
+  if (!put_user(pt, 0)) {
+    return false;
+  }
+  
+  if (size > 1) {
+    for (int i=0; i<size; ++i) {  // Move pointer to last location in buffer
+      ++pt;
+    }
+
+    // Check if we can read the last location in buffer
+    if (!put_user(pt, 0)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /* System Call: void halt (void)

@@ -152,6 +152,10 @@ static const uint8_t syscall_argc[20] = {
 
 Table to map a system call whith the number of arguments it takes
 
+struct lock fs_lock;
+
+Lock to limit access to the filesystem to a single thread
+
 
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
