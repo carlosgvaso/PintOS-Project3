@@ -24,6 +24,12 @@
 
 #include <log.h>
 
+typedef struct cmd_ {
+  char *cmd_str;
+  char **argv;
+  int argc;
+} cmd_t;
+
 // FIXME: These semaphores should be per thread semaphores, and they belong in the thread struct.
 struct semaphore launched;
 struct semaphore exiting;
