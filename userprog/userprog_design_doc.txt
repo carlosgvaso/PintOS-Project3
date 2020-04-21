@@ -122,6 +122,37 @@ position in the string in a local variable of the thread, which makes
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+#define SYSCALL_ARGC_MAX 3
+
+Max number of arguments that a syscall takes
+
+
+static const uint8_t syscall_argc[20] = {
+  0,  // SYS_HALT
+  1,  // SYS_EXIT
+  1,  // SYS_EXEC
+  1,  // SYS_WAIT
+  2,  // SYS_CREATE
+  1,  // SYS_REMOVE
+  1,  // SYS_OPEN
+  1,  // SYS_FILESIZE
+  3,  // SYS_READ
+  3,  // SYS_WRITE
+  2,  // SYS_SEEK
+  1,  // SYS_TELL
+  1,  // SYS_CLOSE
+  0,  // SYS_MMAP
+  0,  // SYS_MUNMAP
+  0,  // SYS_CHDIR
+  0,  // SYS_MKDIR
+  0,  // SYS_READDIR
+  0,  // SYS_ISDIR
+  0   // SYS_INUMBER
+};
+
+Table to map a system call whith the number of arguments it takes
+
+
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
