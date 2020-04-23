@@ -105,12 +105,12 @@ pointer in the end of a page to the address of the beginning of the new page.
 
 This is because the kernel is a multithreaded program, and multiple threads can
 call the `strtok_r()` function simultaneously. Therefore, that function must be
-reentrant, in order to be thread-safe. In the kernel, `strtok()` cannot safely
+re-entrant, in order to be thread-safe. In the kernel, `strtok()` cannot safely
 store its current position in the string in a global or static variable, as
 this variable might get overwritten by a call to `strtok()` by another thread.
 This is why `strtok_r()` requires an extra argument to save its current
 position in the string in a local variable of the thread, which makes
-`strtoc_r()` reentrant and thread-safe.
+`strtoc_r()` re-entrant and thread-safe.
 
 
                              SYSTEM CALLS
@@ -122,10 +122,12 @@ position in the string in a local variable of the thread, which makes
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
-#define SYSCALL_ARGC_MAX 3
-
 Max number of arguments that a syscall takes
 
+#define SYSCALL_ARGC_MAX 3
+
+
+Table to map a system call with the number of arguments it takes
 
 static const uint8_t syscall_argc[20] = {
   0,  // SYS_HALT
@@ -150,16 +152,54 @@ static const uint8_t syscall_argc[20] = {
   0   // SYS_INUMBER
 };
 
-Table to map a system call whith the number of arguments it takes
+
+Lock to limit access to the filesystem to a single thread
 
 struct lock fs_lock;
 
-Lock to limit access to the filesystem to a single thread
+
+Struct with state information of kernel thread. We added a file descriptor
+table, a next entry index, and place to save a process exit status.
+
+struct thread
+  {
+    /* Owned by thread.c. */
+    tid_t tid;                          /* Thread identifier. */
+    enum thread_status status;          /* Thread state. */
+    char name[16];                      /* Name (for debugging purposes). */
+    uint8_t *stack;                     /* Saved stack pointer. */
+    int priority;                       /* Priority. */
+    struct list_elem allelem;           /* List element for all threads list. */
+
+    /* Shared between thread.c and synch.c. */
+    struct list_elem elem;              /* List element. */
+
+#ifdef USERPROG
+    /* Owned by userprog/process.c. */
+    uint32_t *pagedir;                  /* Page directory. */
+    int32_t exit_status;                // Process exit status
+    struct file *fd_tab[20];            // File descriptor table
+    int fd_tab_next;                    // Next entry in the fd table
+#endif
+
+    /* Owned by thread.c. */
+    unsigned magic;                     /* Detects stack overflow. */
+  };
 
 
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
+
+File descriptors are associated with open files using the File Descriptor Table
+(`fd_tab`), which is a member of the `struct thread`. The FDT is an array of
+`struct file` pointers. The file descriptor of a file is the index at
+which the pointer for the file's `struct file` is saved. Therefor, we can
+get a file's `struct file` from the FDT by reading the `fd_tab` array at the
+index indicated by the file's file descriptor. Since the FDT is a member of the
+`struct thread` the file descriptors are unique within a single process, and
+they are not unique within the entire OS.
+
 
 ---- ALGORITHMS ----
 
@@ -214,6 +254,9 @@ Lock to limit access to the filesystem to a single thread
 
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+
+I did not change it.
+
 
                            SURVEY QUESTIONS
                            ================

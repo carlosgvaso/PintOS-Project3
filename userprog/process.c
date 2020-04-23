@@ -73,13 +73,13 @@ process_execute (const char *command)
 
   for (token = strtok_r (cmd.cmd_str, " ", &save_ptr); token != NULL;
       token = strtok_r (NULL, " ", &save_ptr)) {
-  // Don't grow argv in the first iteration
-  if (cmd.argc > 0) {
-    // Grow argv to fit the new token
-    cmd.argv = (char **) realloc(cmd.argv, (cmd.argc + 1) * sizeof(char *));
-  }
-  cmd.argv[cmd.argc] = token; // Save token pointer in argv
-  ++(cmd.argc);               // Increment argc
+    // Don't grow argv in the first iteration
+    if (cmd.argc > 0) {
+      // Grow argv to fit the new token
+      cmd.argv = (char **) realloc(cmd.argv, (cmd.argc + 1) * sizeof(char *));
+    }
+    cmd.argv[cmd.argc] = token; // Save token pointer in argv
+    ++(cmd.argc);               // Increment argc
   }
 
   // Copy first argument to a buffer to use as thread name
@@ -105,12 +105,13 @@ start_process (void *command_)
 {
   /* Make a copy of the command as this thread's local variable to ensure it
    * doesn't get overwritten if process_execute get's called again. We are
-   * responsible for freeing any dinamically allocated stuff in COMMAND_ from
+   * responsible for freeing any dynamically allocated stuff in COMMAND_ from
    * here on.
    */
   cmd_t cmd = *(cmd_t *)command_;
   struct intr_frame if_;
   bool success;
+  struct thread *th;
 
   log(L_TRACE, "start_process()");
 
@@ -120,6 +121,13 @@ start_process (void *command_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (&cmd, &if_.eip, &if_.esp);
+
+  // TODO: Set up the process' File Descriptor Table
+  th = thread_current();
+  //struct file *f = NULL;
+  thread_fd_add(th, NULL);  // Add stdin
+  thread_fd_add(th,NULL);  // Add stdout
+  //thread_fd_add(th, f);  // Add stderr
 
   /* If load failed, quit. */
   palloc_free_page (cmd.cmd_str); // Free page

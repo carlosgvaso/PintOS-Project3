@@ -585,3 +585,66 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+#ifdef USERPROG
+/* Add file struct pointer to the File Descriptor Table of the thread
+ *
+ * The new file descriptor is added to the end of the File Descriptor Table.
+ * This entry is saved in the FD_TAB_NEXT counter of the struct thread.
+ *
+ * \param th  Pointer to the thread's struct thread
+ * \param f   File struct pointer to add to table
+ * \return  New file descriptor if successful, -1 otherwise.
+ */
+int  thread_fd_add(struct thread *th, struct file *f) {
+  int fd;
+
+  // Check if the table is full
+  if (th->fd_tab_next > 20) {
+    return (-1);
+  }
+  
+  th->fd_tab[th->fd_tab_next] = f;  // Add file struct pointer to table
+  fd = th->fd_tab_next; // Save fd to return
+  th->fd_tab_next++;    // Increment fd next counter
+
+  return (fd);
+}
+
+/* Remove fd from the File Descriptor Table of the thread
+ *
+ * The file descriptor is removed by setting it's entry in the File Descriptor
+ * Table to NULL, and reducing the FD_TAB_NEXT counter if needed. The
+ * FD_TAB_NEXT counter is reduced if the file descriptor was the last valid
+ * file descriptor in the File Descriptor Table. It is reduced so that it
+ * points to the next available entry in the table.
+ *
+ * \param th  Pointer to the thread's struct thread
+ * \param fd  File descriptor to remove
+ * \return  True if successful, false otherwise.
+ */
+bool  thread_fd_remove(struct thread *th, int fd) {
+  // Check fd is inside the table
+  if (fd >= th->fd_tab_next) {
+    return (false);
+  }
+
+  // Remove struct for the fd
+  th->fd_tab[fd] = NULL;
+
+  // Reduce FD_TAB_NEXT if needed
+  for (int i=((th->fd_tab_next)-1); i>=0; --i) {
+    // Check if fd has a struct
+    if (th->fd_tab[i] == NULL) {
+      // Entry is NULL, so reduce counter
+      th->fd_tab_next--;
+    } else {
+      // Entry is not null, this is the last table entry now
+      break;
+    }
+  }
+
+  return (true);
+}
+#endif
+

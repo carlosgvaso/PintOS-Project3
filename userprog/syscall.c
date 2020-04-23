@@ -1,16 +1,22 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include <string.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
-#include "devices/shutdown.h"
-#include "userprog/process.h"
+#include "devices/shutdown.h" // shutdown_power_off()
+#include "devices/input.h"    // input_getc()
+#include "userprog/process.h" // process_*()
+#include "lib/user/syscall.h" // pid_t
+#include "filesys/off_t.h"    // off_t
+#include "filesys/filesys.h"  // filesys_*()
+#include "filesys/file.h"     // file_*()
 
 #define SYSCALL_ARGC_MAX 3  // Max number of arguments that a syscall takes
 
-/* Table to map a system call whith the number of arguments it takes
+/* Table to map a system call with the number of arguments it takes
  *
  * Read the entry of this array corresponding to the system call number to find
  * the number of arguments that system call takes.
@@ -44,8 +50,8 @@ struct lock fs_lock;
 static void syscall_handler (struct intr_frame *);
 void sys_halt (void);
 void sys_exit (int status);
-tid_t sys_exec (const char *cmd_line);
-int sys_wait (tid_t pid);
+pid_t sys_exec (const char *cmd_line);
+int sys_wait (pid_t pid);
 bool sys_create (const char *file, unsigned initial_size);
 bool sys_remove (const char *file);
 int sys_open (const char *file);
@@ -107,7 +113,7 @@ syscall_handler (struct intr_frame *f UNUSED)
       f->eax = sys_exec((const char *)argv[0]);
       break;
     case SYS_WAIT:
-      f->eax = sys_wait((tid_t)argv[0]);
+      f->eax = sys_wait((pid_t)argv[0]);
       break;
     case SYS_CREATE:
       f->eax = sys_create((const char *)argv[0], (unsigned)argv[1]);
@@ -169,35 +175,40 @@ put_user (uint8_t *udst, uint8_t byte)
   return error_code != -1;
 }
 
-/* Checks if the pointer is valid for reading
+/* Checks if buffer is valid for reading
  *
- * Checks is a pointer is below the PHYS_BASE, and if we can read from the
- * first and last bytes in the buffer.
+ * Checks if a buffer pointer is below the PHYS_BASE, and if we can read from
+ * the first and last bytes in the buffer.
  *
- * \param pointer Pointer to check
- * \param size    Size of buffer in the pointer
- * \return  True if pointer is valid for reading, false otherwise
+ * \param pointer Pointer to buffer to check
+ * \param size    Size of buffer in bytes
+ * \return  True if buffer is valid for reading, false otherwise
  */
-static bool is_valid_read_pt(void *pointer, int size) {
-  void *pt = pointer;
+static bool is_valid_read_pt(void *buffer, int size) {
+  uint8_t *pt = (uint8_t *)buffer;
+
+  // Check for NULL pointer
+  if (buffer == NULL) {
+    return false;
+  }
 
   // Check if pointer is below PHYS_BASE
-  if (pt >= PHYS_BASE) {
+  if (buffer >= PHYS_BASE) {
     return false;
   }
   
   // Check if we can read from the first location in buffer
-  if (get_user(pt) == -1) {
+  if (get_user((const uint8_t *)pt) == -1) {
     return false;
   }
   
   if (size > 1) {
-    for (int i=0; i<size; ++i) {  // Move pointer to last location in buffer
+    for (int i=0; i<size; ++i) {  // Move pointer to last byte in buffer
       ++pt;
     }
 
-    // Check if we can read from the last location in buffer
-    if (get_user(pt) == -1) {
+    // Check if we can read from the last byte in buffer
+    if (get_user((const uint8_t *)pt) == -1) {
       return false;
     }
   }
@@ -205,20 +216,25 @@ static bool is_valid_read_pt(void *pointer, int size) {
   return true;
 }
 
-/* Checks if the pointer is valid for writing
+/* Checks if the buffer is valid for writing
  *
- * Checks is a pointer is below the PHYS_BASE, and if we can write to the first
- * and last bytes in the buffer.
+ * Checks if a buffer pointer is below the PHYS_BASE, and if we can write to
+ * the first and last bytes in the buffer.
  *
- * \param pointer Pointer to check
- * \param size    Size of buffer in the pointer
- * \return  True if pointer is valid for writing, false otherwise
+ * \param pointer Pointer to buffer to check
+ * \param size    Size of buffer in bytes
+ * \return  True if buffer is valid for writing, false otherwise
  */
-static bool is_valid_write_pt(void *pointer, int size) {
-  void *pt = pointer;
+static bool is_valid_write_pt(void *buffer, int size) {
+  uint8_t *pt = (uint8_t *)buffer;
+
+  // Check for NULL pointer
+  if (buffer == NULL) {
+    return false;
+  }
 
   // Check if pointer is below PHYS_BASE
-  if (pt >= PHYS_BASE) {
+  if (buffer >= PHYS_BASE) {
     return false;
   }
   
@@ -248,7 +264,7 @@ static bool is_valid_write_pt(void *pointer, int size) {
  * information about possible deadlock situations, etc.
  */
 void sys_halt(void) {
-  //shutdown_power_off();
+  shutdown_power_off();
 }
 
 /* System Call: void exit (int status)
@@ -278,10 +294,21 @@ void sys_exit (int status) {
  * until it knows whether the child process successfully loaded its executable.
  * You must use appropriate synchronization to ensure this.
  */
-tid_t sys_exec (const char *cmd_line) {
+pid_t sys_exec (const char *cmd_line) {
+  pid_t pid = -1;
+  uint8_t buf_size;
+
+  // TODO: Fix this to check 1st and last byte of buffer
+  // Check for bad FILE pointer
+  //buf_size = strlen(file);
+  buf_size = 1;
+  if (!is_valid_read_pt((void *)cmd_line, buf_size)) {
+    sys_exit(-1);
+    return (pid);
+  }
+
   // TODO: Finish implementing
-  //return -1;
-  return process_execute(cmd_line);
+  return (pid_t)process_execute(cmd_line);
 }
 
 /* System Call: int wait (pid_t pid)
@@ -328,9 +355,9 @@ tid_t sys_exec (const char *cmd_line) {
  * Implementing this system call requires considerably more work than any of
  * the rest.
  */
-int sys_wait (tid_t pid) {
+int sys_wait (pid_t pid) {
   // TODO: Finish implementing
-  return process_wait(pid);
+  return process_wait((tid_t)pid);
 }
 
 /* System Call: bool create (const char *file, unsigned initial_size)
@@ -341,8 +368,24 @@ int sys_wait (tid_t pid) {
  * system call.
  */
 bool sys_create (const char *file, unsigned initial_size) {
-  // TODO: Implement
-  return false;
+  bool result = false;
+  uint8_t buf_size;
+
+  // TODO: Fix this to check 1st and last byte of buffer
+  // Check for bad FILE pointer
+  //buf_size = strlen(file);
+  buf_size = 1;
+  if (!is_valid_read_pt((void *)file, buf_size)) {
+    sys_exit(-1);
+    return (result);
+  }
+
+  // Use filesys interface to create a new file in the filesystem
+  lock_acquire(&fs_lock);
+  result = filesys_create(file, (off_t)initial_size);
+  lock_release(&fs_lock);
+  
+  return (result);
 }
 
 /* System Call: bool remove (const char *file)
@@ -353,8 +396,24 @@ bool sys_create (const char *file, unsigned initial_size) {
  * details.
  */
 bool sys_remove (const char *file) {
-  // TODO: implement
-  return false;
+  bool result = false;
+  uint8_t buf_size;
+
+  // TODO: Fix this to check 1st and last byte of buffer
+  // Check for bad FILE pointer
+  //buf_size = strlen(file);
+  buf_size = 1;
+  if (!is_valid_read_pt((void *)file, buf_size)) {
+    sys_exit(-1);
+    return (result);
+  }
+
+  // Use filesys interface to remove a file from the filesystem
+  lock_acquire(&fs_lock);
+  result = filesys_remove(file);
+  lock_release(&fs_lock);
+
+  return (result);
 }
 
 /* System Call: int open (const char *file)
@@ -376,8 +435,28 @@ bool sys_remove (const char *file) {
  * close and they do not share a file position.
  */
 int sys_open (const char *file) {
-  // TODO: implement
-  return -1;
+  int fd = -1;
+  struct file *file_pt;
+  uint8_t buf_size;
+
+  // TODO: Fix this to check 1st and last byte of buffer
+  // Check for bad FILE pointer
+  //buf_size = strlen(file);
+  buf_size = 1;
+  if (!is_valid_read_pt((void *)file, buf_size)) {
+    sys_exit(-1);
+    return (fd);
+  }
+
+  // Use filesys interface to remove a file from the filesystem
+  lock_acquire(&fs_lock);
+  file_pt = filesys_open(file);
+  if (file_pt != NULL) {
+    fd = thread_fd_add(thread_current(), file_pt);
+  }
+  lock_release(&fs_lock);
+
+  return (fd);
 }
 
 /* System Call: int filesize (int fd)
@@ -385,8 +464,20 @@ int sys_open (const char *file) {
  * Returns the size, in bytes, of the file open as fd.
  */
 int sys_filesize (int fd) {
-  // TODO: implement
-  return -1;
+  int result = -1;
+  struct thread *th = thread_current();
+  
+  // Check the file descriptor exists in the FDT
+  if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
+    sys_exit(-1);
+    return (result);
+  }
+
+  lock_acquire(&fs_lock);
+  result = (int) file_length(th->fd_tab[fd]);
+  lock_release(&fs_lock);
+
+  return (result);
 }
 
 /* System Call: int read (int fd, void *buffer, unsigned size)
@@ -397,8 +488,13 @@ int sys_filesize (int fd) {
  * using input_getc().
  */
 int sys_read (int fd, void *buffer, unsigned size) {
-  // TODO: implement
-  return -1;
+  if (fd==0) { // Stdin
+    //input_getc();
+    return (size);
+  }
+
+  // TODO: Handle reading from other fds
+  return (-1);
 }
 
 /* System Call: int write (int fd, const void *buffer, unsigned size)
@@ -423,7 +519,7 @@ int sys_write(int fd, void *buffer, unsigned size) {
     return (size);
   }
 
-  // TODO: Handle writing to other fds besides stdout
+  // TODO: Handle writing to other fds
   return (0);
 }
 
@@ -441,7 +537,17 @@ int sys_write(int fd, void *buffer, unsigned size) {
  * require any special effort in system call implementation.
  */
 void sys_seek (int fd, unsigned position) {
-  // TODO: implement
+  struct thread *th = thread_current();
+  
+  // TODO: See if check is necessary
+  // Check the file descriptor exists in the FDT
+  if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
+    sys_exit(-1);
+  }
+
+  lock_acquire(&fs_lock);
+  file_seek(th->fd_tab[fd], (off_t)position);
+  lock_release(&fs_lock);
 }
 
 /* System Call: unsigned tell (int fd)
@@ -450,8 +556,21 @@ void sys_seek (int fd, unsigned position) {
  * expressed in bytes from the beginning of the file.
  */
 unsigned sys_tell (int fd) {
-  // TODO: implement
-  return (unsigned)NULL;
+  unsigned result = 0;
+  struct thread *th = thread_current();
+  
+  // TODO: See if check is necessary
+  // Check the file descriptor exists in the FDT
+  if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
+    sys_exit(-1);
+    return (result);
+  }
+
+  lock_acquire(&fs_lock);
+  result = (unsigned) file_tell(th->fd_tab[fd]);
+  lock_release(&fs_lock);
+
+  return (result);
 }
 
 /* System Call: void close (int fd)
@@ -461,6 +580,17 @@ unsigned sys_tell (int fd) {
  * each one.
  */
 void sys_close (int fd) {
-  // TODO: implement
+  struct thread *th = thread_current();
+  
+  // TODO: See if check is necessary
+  // Check the file descriptor exists in the FDT
+  if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
+    sys_exit(-1);
+  }
+
+  lock_acquire(&fs_lock);
+  file_close(th->fd_tab[fd]);
+  thread_fd_remove(th, fd);
+  lock_release(&fs_lock);
 }
 
