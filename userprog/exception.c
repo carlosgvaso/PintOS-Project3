@@ -2,6 +2,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include "userprog/gdt.h"
+#include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
@@ -122,10 +123,17 @@ kill (struct intr_frame *f)
 static void
 page_fault (struct intr_frame *f)
 {
-  bool not_present;  /* True: not-present page, false: writing r/o page. */
-  bool write;        /* True: access was write, false: access was read. */
-  bool user;         /* True: access by user, false: access by kernel. */
-  void *fault_addr;  /* Fault address. */
+//  bool not_present;  /* True: not-present page, false: writing r/o page. */
+//  bool write;        /* True: access was write, false: access was read. */
+//  bool user;         /* True: access by user, false: access by kernel. */
+//  void *fault_addr;  /* Fault address. */
+
+  /* Call the `exit()` system call to terminate the user or kernel threads
+   * safely, and exit with an error exit status. We are not handling the page
+   * faults like we would do in a normal OS. Any code after the call will not
+   *be executed.
+   */
+  sys_exit(-1);
 
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
@@ -134,27 +142,33 @@ page_fault (struct intr_frame *f)
      See [IA32-v2a] "MOV--Move to/from Control Registers" and
      [IA32-v3a] 5.15 "Interrupt 14--Page Fault Exception
      (#PF)". */
+/*
   asm ("movl %%cr2, %0" : "=r" (fault_addr));
-
+*/
   /* Turn interrupts back on (they were only off so that we could
      be assured of reading CR2 before it changed). */
+/*
   intr_enable ();
-
+*/
   /* Count page faults. */
+/*
   page_fault_cnt++;
-
+*/
   /* Determine cause. */
+/*
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-
+*/
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
+/*
   printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
   kill (f);
+*/
 }
