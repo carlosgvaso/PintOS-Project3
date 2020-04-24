@@ -197,7 +197,7 @@ static bool is_valid_read_pt(void *buffer, int size) {
     return false;
   }
   
-  // Check if we can read from the first location in buffer
+  // Check if we can read from the first byte in buffer
   if (get_user((const uint8_t *)pt) == -1) {
     return false;
   }
@@ -238,13 +238,13 @@ static bool is_valid_write_pt(void *buffer, int size) {
     return false;
   }
   
-  // Check if we can write to the first location in buffer
+  // Check if we can write to the first byte in buffer
   if (!put_user(pt, 0)) {
     return false;
   }
   
   if (size > 1) {
-    for (int i=0; i<size; ++i) {  // Move pointer to last location in buffer
+    for (int i=0; i<size; ++i) {  // Move pointer to last byte in buffer
       ++pt;
     }
 
@@ -303,7 +303,7 @@ pid_t sys_exec (const char *cmd_line) {
   //buf_size = strlen(file);
   buf_size = 1;
   if (!is_valid_read_pt((void *)cmd_line, buf_size)) {
-    sys_exit(-1);
+    sys_exit(SYSCALL_EXIT_ERR);
     return (pid);
   }
 
@@ -368,7 +368,7 @@ int sys_wait (pid_t pid) {
  * system call.
  */
 bool sys_create (const char *file, unsigned initial_size) {
-  bool result = false;
+  bool created = false;
   uint8_t buf_size;
 
   // TODO: Fix this to check 1st and last byte of buffer
@@ -376,16 +376,16 @@ bool sys_create (const char *file, unsigned initial_size) {
   //buf_size = strlen(file);
   buf_size = 1;
   if (!is_valid_read_pt((void *)file, buf_size)) {
-    sys_exit(-1);
-    return (result);
+    sys_exit(SYSCALL_EXIT_ERR);
+    return (created);
   }
 
   // Use filesys interface to create a new file in the filesystem
   lock_acquire(&fs_lock);
-  result = filesys_create(file, (off_t)initial_size);
+  created = filesys_create(file, (off_t)initial_size);
   lock_release(&fs_lock);
   
-  return (result);
+  return (created);
 }
 
 /* System Call: bool remove (const char *file)
@@ -396,7 +396,7 @@ bool sys_create (const char *file, unsigned initial_size) {
  * details.
  */
 bool sys_remove (const char *file) {
-  bool result = false;
+  bool removed = false;
   uint8_t buf_size;
 
   // TODO: Fix this to check 1st and last byte of buffer
@@ -404,16 +404,16 @@ bool sys_remove (const char *file) {
   //buf_size = strlen(file);
   buf_size = 1;
   if (!is_valid_read_pt((void *)file, buf_size)) {
-    sys_exit(-1);
-    return (result);
+    sys_exit(SYSCALL_EXIT_ERR);
+    return (removed);
   }
 
   // Use filesys interface to remove a file from the filesystem
   lock_acquire(&fs_lock);
-  result = filesys_remove(file);
+  removed = filesys_remove(file);
   lock_release(&fs_lock);
 
-  return (result);
+  return (removed);
 }
 
 /* System Call: int open (const char *file)
@@ -444,7 +444,7 @@ int sys_open (const char *file) {
   //buf_size = strlen(file);
   buf_size = 1;
   if (!is_valid_read_pt((void *)file, buf_size)) {
-    sys_exit(-1);
+    sys_exit(SYSCALL_EXIT_ERR);
     return (fd);
   }
 
@@ -464,20 +464,20 @@ int sys_open (const char *file) {
  * Returns the size, in bytes, of the file open as fd.
  */
 int sys_filesize (int fd) {
-  int result = -1;
+  int size = -1;
   struct thread *th = thread_current();
   
   // Check the file descriptor exists in the FDT
   if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
-    sys_exit(-1);
-    return (result);
+    sys_exit(SYSCALL_EXIT_ERR);
+    return (size);
   }
 
   lock_acquire(&fs_lock);
-  result = (int) file_length(th->fd_tab[fd]);
+  size = (int) file_length(th->fd_tab[fd]);
   lock_release(&fs_lock);
 
-  return (result);
+  return (size);
 }
 
 /* System Call: int read (int fd, void *buffer, unsigned size)
@@ -488,13 +488,49 @@ int sys_filesize (int fd) {
  * using input_getc().
  */
 int sys_read (int fd, void *buffer, unsigned size) {
-  if (fd==0) { // Stdin
-    //input_getc();
-    return (size);
+  int rb = 0;
+  uint8_t buf_size;
+  struct thread *th = thread_current();
+
+  // Check for bad FILE pointer
+  buf_size =  (uint8_t)size;
+  if (!is_valid_write_pt(buffer, buf_size)) {
+    sys_exit(SYSCALL_EXIT_ERR);
+    return (rb);
+  }
+  
+  // Special cases to handle stdin and stdout
+  if (fd == 0) { // Stdin
+    char in_char = '\0';  // Initialize to any value to pass first while check
+    char *buf = (char *)buffer;
+
+    /* The `input_getc()` function reads 1 char at the time from the stdin.
+     * Use it on a loop until we detect the user pressing the [Enter] key. This
+     * will produce a `\n` char in Unix or `\r\n` in Windows systems.
+     */
+    while (in_char != '\n') {
+      in_char = input_getc(); // Get input char from stdin
+      buf[rb] = in_char;      // Write char to buffer
+      ++rb;                   // Increase read byte count
+    }
+    
+    return (rb);
+  } else if (fd == 1) { // Stdout
+    return (rb);
   }
 
-  // TODO: Handle reading from other fds
-  return (-1);
+  // Check the file descriptor exists in the FDT
+  if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
+    sys_exit(SYSCALL_EXIT_ERR);
+    return (rb);
+  }
+  
+  // Write data to other fds
+  lock_acquire(&fs_lock);
+  rb = (int) file_read(th->fd_tab[fd], buffer, (off_t)size);
+  lock_release(&fs_lock);
+
+  return (rb);
 }
 
 /* System Call: int write (int fd, const void *buffer, unsigned size)
@@ -514,13 +550,38 @@ int sys_read (int fd, void *buffer, unsigned size) {
  * scripts.
  */
 int sys_write(int fd, void *buffer, unsigned size) {
-  if (fd==1) { // Stdout
+  int wb = 0;
+  uint8_t buf_size;
+  struct thread *th = thread_current();
+
+  // Check for bad FILE pointer
+  buf_size = (uint8_t)size;
+  if (!is_valid_read_pt(buffer, buf_size)) {
+    sys_exit(SYSCALL_EXIT_ERR);
+    return (wb);
+  }
+  
+  // Special cases to handle stdin and stdout
+  if (fd == 0) {  // Stdin
+    return (wb);
+  } else if (fd == 1) { // Stdout
     putbuf(buffer, size);
-    return (size);
+    wb = (int)size;
+    return (wb);
   }
 
-  // TODO: Handle writing to other fds
-  return (0);
+  // Check the file descriptor exists in the FDT
+  if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
+    sys_exit(SYSCALL_EXIT_ERR);
+    return (wb);
+  }
+  
+  // Write data to other fds
+  lock_acquire(&fs_lock);
+  wb = (int) file_write(th->fd_tab[fd], buffer, (off_t)size);
+  lock_release(&fs_lock);
+
+  return (wb);
 }
 
 /* System Call: void seek (int fd, unsigned position)
@@ -542,7 +603,7 @@ void sys_seek (int fd, unsigned position) {
   // TODO: See if check is necessary
   // Check the file descriptor exists in the FDT
   if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
-    sys_exit(-1);
+    sys_exit(SYSCALL_EXIT_ERR);
   }
 
   lock_acquire(&fs_lock);
@@ -562,7 +623,7 @@ unsigned sys_tell (int fd) {
   // TODO: See if check is necessary
   // Check the file descriptor exists in the FDT
   if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
-    sys_exit(-1);
+    sys_exit(SYSCALL_EXIT_ERR);
     return (result);
   }
 
@@ -585,7 +646,7 @@ void sys_close (int fd) {
   // TODO: See if check is necessary
   // Check the file descriptor exists in the FDT
   if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
-    sys_exit(-1);
+    sys_exit(SYSCALL_EXIT_ERR);
   }
 
   lock_acquire(&fs_lock);

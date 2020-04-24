@@ -133,7 +133,7 @@ page_fault (struct intr_frame *f)
    * faults like we would do in a normal OS. Any code after the call will not
    *be executed.
    */
-  sys_exit(-1);
+  sys_exit(SYSCALL_EXIT_ERR);
 
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to

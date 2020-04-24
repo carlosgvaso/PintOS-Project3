@@ -30,7 +30,7 @@ def main():
 
             # Print total grade
             print('Total grade: {:.2f} / 100'
-                  .format(100.0*tests_failed/tests_total))
+                  .format(100.0*(tests_total-tests_failed)/tests_total))
 
             # Print userprog tests grade
             #
