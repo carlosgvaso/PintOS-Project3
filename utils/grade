@@ -1,0 +1,46 @@
+#!/usr/bin/python3
+
+# Wrapper to `make check` to get better grading information.
+#
+# This script calls `make check`, and it parses its output to generate better
+# grading information.
+
+import subprocess
+
+
+cmd = ['make', 'check']
+cmd_dir = '/home/cvaso/project3/userprog'
+
+tests_non_userprog = 13.0
+
+
+def main():
+    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            cwd=cmd_dir)
+    output = p.stdout.decode('utf-8')
+
+    for line in output.split('\n'):
+        if 'tests failed.' in line:
+            print("{}".format(line.rstrip('\.')))
+            
+            # Get the tests failed and total numbers
+            tokens = line.split();
+            tests_failed = float(tokens[0])
+            tests_total = float(tokens[2])
+
+            # Print total grade
+            print('Total grade: {:.2f} / 100'
+                  .format(100.0*tests_failed/tests_total))
+
+            # Print userprog tests grade
+            #
+            # This calculation only works if all the non-userprog tests fail,
+            # which we expect to be the case for Project 3
+            print('Userprog grade: {:.2f} / 100'
+                  .format(100.0*(tests_total-tests_failed)/
+                          (tests_total-tests_non_userprog)))
+
+
+if __name__=='__main__':
+    main()
+
