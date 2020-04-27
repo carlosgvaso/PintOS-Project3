@@ -492,6 +492,11 @@ int sys_read (int fd, void *buffer, unsigned size) {
   uint8_t buf_size;
   struct thread *th = thread_current();
 
+  // If size is 0 there us nothing to read
+  if (size == 0) {
+    return (rb);
+  }
+
   // Check for bad FILE pointer
   buf_size =  (uint8_t)size;
   if (!is_valid_write_pt(buffer, buf_size)) {
@@ -553,6 +558,11 @@ int sys_write(int fd, void *buffer, unsigned size) {
   int wb = 0;
   uint8_t buf_size;
   struct thread *th = thread_current();
+
+  // If size is 0 there us nothing to write
+  if (size == 0) {
+    return (wb);
+  }
 
   // Check for bad FILE pointer
   buf_size = (uint8_t)size;
