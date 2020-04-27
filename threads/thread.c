@@ -592,7 +592,7 @@ uint32_t thread_stack_ofs = offsetof (struct thread, stack);
  * The new file struct is added to the end of the File Descriptor Table, which
  * is saved in the FD_TAB_NEXT counter of the struct thread. Then, the
  * FD_TAB_NEXT counter is incremented. FD_TAB_NEXT must be equal or larger than
- * 2 to accommodate for stdin and stdout.
+ * 3 to accommodate for stdin (0), stdout (1) and stderr (2).
  *
  * \param th  Pointer to the thread's struct thread
  * \param f   File struct pointer to add to table
@@ -604,11 +604,13 @@ int  thread_fd_add(struct thread *th, struct file *f) {
   // Check if the table is full
   if (th->fd_tab_next > 20) {
     return (-1);
+  } else if (th->fd_tab_next < 3) {
+    return (-1);
   }
   
   th->fd_tab[th->fd_tab_next] = f;  // Add file struct pointer to table
-  fd = th->fd_tab_next; // Save fd to return
-  th->fd_tab_next++;    // Increment fd next counter
+  fd = th->fd_tab_next;             // Save fd to return
+  th->fd_tab_next++;                // Increment fd next counter
 
   return (fd);
 }
@@ -620,7 +622,7 @@ int  thread_fd_add(struct thread *th, struct file *f) {
  * FD_TAB_NEXT counter is reduced if the file descriptor was the last valid
  * file descriptor in the File Descriptor Table. It is reduced so that it
  * points to the next available entry in the table. FD_TAB_NEXT must be equal
- * or larger than 2 to accommodate for stdin and stdout.
+ * or larger than 3 to accommodate for stdin (0), stdout (1) and stderr (2).
  *
  * \param th  Pointer to the thread's struct thread
  * \param fd  File descriptor to remove
@@ -630,7 +632,7 @@ bool  thread_fd_remove(struct thread *th, int fd) {
   // Check fd is inside the table
   if (fd >= th->fd_tab_next) {
     return (false);
-  } else if (fd < 2) {
+  } else if (fd < 3) {
     return (false);
   }
 

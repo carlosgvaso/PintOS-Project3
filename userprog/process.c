@@ -111,7 +111,7 @@ start_process (void *command_)
   cmd_t cmd = *(cmd_t *)command_;
   struct intr_frame if_;
   bool success;
-  struct thread *th;
+  struct thread *th = thread_current();
 
   log(L_TRACE, "start_process()");
 
@@ -122,12 +122,11 @@ start_process (void *command_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (&cmd, &if_.eip, &if_.esp);
 
-  // TODO: Set up the process' File Descriptor Table
-  th = thread_current();
-  //struct file *f = NULL;
-  thread_fd_add(th, NULL);  // Add stdin
-  thread_fd_add(th,NULL);  // Add stdout
-  //thread_fd_add(th, f);  // Add stderr
+  // Set up the process' File Descriptor Table
+  th->fd_tab[0] = NULL;  // Add stdin
+  th->fd_tab[1] = NULL;  // Add stdout
+  th->fd_tab[2] = NULL;  // Add stderr
+  th->fd_tab_next = 3;
 
   /* If load failed, quit. */
   palloc_free_page (cmd.cmd_str); // Free page
@@ -151,7 +150,7 @@ start_process (void *command_)
    it was terminated by the kernel (i.e. killed due to an
    exception), returns -1.  If TID is invalid or if it was not a
    child of the calling process, or if process_wait() has already
-   been successfully called for the given TID, returns -1
+   been successfully called for the given TID, returns -
    immediately, without waiting.
 
    This function will be implemented in problem 2-2.  For now, it
