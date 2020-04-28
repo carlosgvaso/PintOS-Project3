@@ -122,12 +122,12 @@ position in the string in a local variable of the thread, which makes
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
-Max number of arguments that a syscall takes
+Max number of arguments that a syscall takes.
 
 #define SYSCALL_ARGC_MAX 3
 
 
-Table to map a system call with the number of arguments it takes
+Table to map a system call with the number of arguments it takes.
 
 static const uint8_t syscall_argc[20] = {
   0,  // SYS_HALT
@@ -153,13 +153,13 @@ static const uint8_t syscall_argc[20] = {
 };
 
 
-Lock to limit access to the filesystem to a single thread
+Lock to limit filesystem access to a single thread at a time.
 
 struct lock fs_lock;
 
 
-Struct with state information of kernel thread. We added a file descriptor
-table, a next entry index, and place to save a process exit status.
+Kernel thread state struct. We added a file descriptor table, a next entry
+index, place to save a process exit status, and semaphores.
 
 struct thread
   {
@@ -192,13 +192,17 @@ struct thread
 >> single process?
 
 File descriptors are associated with open files using the File Descriptor Table
-(`fd_tab`), which is a member of the `struct thread`. The FDT is an array of
-`struct file` pointers. The file descriptor of a file is the index at
-which the pointer for the file's `struct file` is saved. Therefor, we can
-get a file's `struct file` from the FDT by reading the `fd_tab` array at the
-index indicated by the file's file descriptor. Since the FDT is a member of the
-`struct thread` the file descriptors are unique within a single process, and
-they are not unique within the entire OS.
+(`thread.fd_tab`), which is a member of the `struct thread`. The FDT is an
+array of `struct file` pointers. The file descriptor of a file is the index at
+which the pointer for the file's `struct file` is saved. Therefore, we can
+get a file's `struct file` from the FDT by reading the `thread.fd_tab` array at
+the index indicated by the file's file descriptor. Since the FDT is a member of
+the `struct thread` the file descriptors are unique within a single process,
+and they are not unique within the entire OS. Also, the FDT will always have 3
+special file descriptors populated 0 (stdin), 1 (stdout) and 2 (stderr), which
+are NULL, and they are handled differently than the rest of file descriptors by
+the system calls. The 0 to 2 file descriptors are loaded when a thread is first
+run in the `start_thread()` function.
 
 
 ---- ALGORITHMS ----

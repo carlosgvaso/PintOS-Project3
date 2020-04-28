@@ -25,14 +25,12 @@
 #include <log.h>
 
 typedef struct cmd_ {
+  tid_t tid_parent;
   char *cmd_str;
   char **argv;
   int argc;
 } cmd_t;
 
-// FIXME: These semaphores should be per thread semaphores, and they belong in the thread struct.
-struct semaphore launched;
-struct semaphore exiting;
 
 static thread_func start_process NO_RETURN;
 static bool load (cmd_t *cmd, void (**eip) (void), void **esp);
@@ -45,9 +43,10 @@ tid_t
 process_execute (const char *command)
 {
   char *cmd_copy, *save_ptr, *token;
-  char cmd_name[16];  // Same lenght as thread name in struct thread
+  char cmd_name[16];  // Same length as thread name in struct thread
   cmd_t cmd;
   tid_t tid;
+  struct thread *th = thread_current();
 
   // NOTE:
   // To see this print, make sure LOGGING_LEVEL in this file is <= L_TRACE (6)
@@ -67,6 +66,7 @@ process_execute (const char *command)
    * save pointers to those tokens in an array. The array is dynamically
    * allocated, so DO NOT forget to free it after your are done usign it.
    */ 
+  cmd.tid_parent = th->tid;
   cmd.cmd_str = cmd_copy;
   cmd.argv = (char **) malloc(sizeof(char *));
   cmd.argc = 0;
@@ -85,15 +85,21 @@ process_execute (const char *command)
   // Copy first argument to a buffer to use as thread name
   strlcpy(cmd_name, cmd.argv[0], (strlen(cmd.argv[0]) + 1));
 
-  sema_init(&launched, 0); // FIXME: should be t->launched when the semaphore is added to the threads struct
-  sema_init(&exiting, 0);  // FIXME: should be t->exiting when the semaphore is added to the threads struct
+  // Initialize semaphore to coordinate the child's process thread launch
+  sema_init(&(th->launched), 0);
 
   /* Create a new thread to execute COMMAND. */
   tid = thread_create (cmd_name, PRI_DEFAULT, start_process, &cmd);
-  if (tid == TID_ERROR)
+  if (tid == TID_ERROR) {
     palloc_free_page (cmd_copy);
+    free(cmd.argv);
+  } else {
+    // Wait for signal that the child thread was launched
+    sema_down(&(th->launched));
 
-  sema_down(&launched); // FIXME: should be t->launched when the semaphore is added to the threads struct
+    // Add to children list
+    thread_chld_add(th, tid);
+  }
 
   return tid;
 }
@@ -112,8 +118,16 @@ start_process (void *command_)
   struct intr_frame if_;
   bool success;
   struct thread *th = thread_current();
+  struct thread *th_parent = thread_get_tcb_by_tid(cmd.tid_parent)
 
   log(L_TRACE, "start_process()");
+
+  // Set the parent TID
+  th->tid_parent = cmd.tid_parent;
+
+  // Initialize the process thread's semaphores
+  sema_init(&(th->exiting), 0);
+  sema_init(&(th->reaped), 0);
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -128,13 +142,22 @@ start_process (void *command_)
   th->fd_tab[2] = NULL;  // Add stderr
   th->fd_tab_next = 3;
 
+  // Set up the process' children table
+  for (int i=0; i<20; ++i) {
+    th->tid_chld[i] = -1;
+  }
+  th->tid_chld_next = 0;
+
   /* If load failed, quit. */
   palloc_free_page (cmd.cmd_str); // Free page
   free(cmd.argv);  // Free dynamically allocated array
-  if (!success)
+  if (!success) {
+    sema_up(&(th_parent->launched));
     thread_exit ();
+  }
 
-  sema_up(&launched); // FIXME: should be t->launched when the semaphore is added to the threads struct
+  // Signal the thread was launched
+  sema_up(&(th_parent->launched));
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -158,13 +181,43 @@ start_process (void *command_)
 int
 process_wait (tid_t child_tid UNUSED)
 {
+  struct thread *th = thread_current();
+  bool is_child = false;
+  int32_t exit_status_child;
+  
+  // Check the given TID is a child of this process
+  for (int i=0; i<th->tid_chld_next; ++i) {
+    if (th->tid_chld[i] == child_tid) {
+      is_child = true;
+      break;
+    }
+  }
+
+  if (!is_child) {
+    return (-1);
+  }
+
+  // Get child's TCB
+  struct thread *th_child = thread_get_tcb_by_tid(child_tid);
+
+  // Check we found the child
+  if (th_child == NULL) {
+    return (-1);
+  }
+
   // Wait for child process to exit, and reap its exit status
-  sema_down(&exiting); // FIXME: should be t->exiting when the semaphore is added to the threads struct
+  sema_down(&(th_child->exiting));
 
-  // Here the child has exited. Get the childs exit status from its thread and return it
+  /* Here the child has started exiting. Reap the child's exit status from its
+   * thread, remove it from the children table, and notify the child that it
+   * can release all its resources.
+   */
+  exit_status_child = th_child->exit_status;
+  thread_chld_remove(th, child_tid);
+  sema_up(&(th_child->reaped));
 
-  // FIXME: Return the child exit status
-  return -1;
+  // Return the child's exit status
+  return (exit_status_child);
 }
 
 /* Free the current process's resources. */
@@ -191,7 +244,9 @@ process_exit (void)
       pagedir_destroy (pd);
     }
 
-  sema_up(&exiting); // FIXME: should be t->launched when the semaphore is added to the threads struct
+  sema_up(&(cur->exiting));
+  sema_down(&(cur->reaped));
+  // TODO: Release TCB and any other thread resources if needed
 }
 
 /* Sets up the CPU for running user code in the current

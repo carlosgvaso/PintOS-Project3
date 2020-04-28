@@ -587,6 +587,86 @@ allocate_tid (void)
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 #ifdef USERPROG
+/* Search the all threads list for the thread, and return its TCB
+ *
+ * \param tid TID of the thread to search for
+ * \return  TCB of the thread with TID equal to tid, or NULL otherwise
+ */
+struct thread *thread_get_tcb_by_tid(tid_t tid) {
+  struct thread *th;
+  struct list_elem *e;
+
+  // Iterate over the list to search for the thread
+  for (e=list_begin(&all_list); e!=list_end(&all_list); e=list_next(e)) {
+    // Convert list element to struct thread
+    th = list_entry(e, struct thread, allelem);
+
+    // Check if we found the thread
+    if (th->tid == tid) {
+      return (th);
+    }
+  }
+
+  // The thread doesn't exist
+  return (NULL);
+}
+
+/* Add child TID to the children table of the thread
+ *
+ * \param th  Pointer to the thread's struct thread
+ * \param tid Child TID to add to table
+ * \return  True if successful, false otherwise.
+ */
+bool  thread_chld_add(struct thread *th, tid_t tid) {
+  // Check if the table is full
+  if (th->tid_chld_next > 20) {
+    return (false);
+  }
+  
+  th->tid_chld[th->tid_chld_next] = tid;  // Add file struct pointer to table
+  th->tid_chld_next++;                    // Increment next counter
+
+  return (true);
+}
+
+/* Remove child TID from the children table of the thread
+ *
+ * \param th  Pointer to the thread's struct thread
+ * \param tid TID of child to remove
+ * \return  True if successful, false otherwise.
+ */
+bool  thread_chld_remove(struct thread *th, tid_t tid) {
+  bool removed = false;
+
+  // Check if table is empty
+  if (th->tid_chld_next <= 0) {
+    return (removed);
+  }
+
+  // Remove child
+  for (int i=0; i<th->tid_chld_next; ++i) {
+    if (th->tid_chld[i] == tid) {
+      th->tid_chld[i] = -1;
+      removed = true;
+      break;
+    }
+  }
+
+  // Reduce tid_chld_next if needed
+  for (int i=((th->tid_chld_next)-1); i>=0; --i) {
+    // Check if table has the last entry empty
+    if (th->tid_chld[i] == -1) {
+      // Entry is empty, so reduce counter
+      th->tid_chld_next--;
+    } else {
+      // Entry is not empty, this is the last table entry now
+      break;
+    }
+  }
+
+  return (removed);
+}
+
 /* Add file struct pointer to the File Descriptor Table of the thread
  *
  * The new file struct is added to the end of the File Descriptor Table, which
