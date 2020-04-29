@@ -94,11 +94,15 @@ process_execute (const char *command)
     palloc_free_page (cmd_copy);
     free(cmd.argv);
   } else {
-    // Wait for signal that the child thread was launched
+    // Wait for signal that the child thread tired to launch
     sema_down(&(th->launched));
 
-    // Add to children list
-    thread_chld_add(th, tid);
+    // Check if the program couldn't be loaded, or if it couldn't run
+    if (thread_get_tcb_by_tid(tid)->exit_status == TID_ERROR) {  // Failed
+      tid = TID_ERROR; // The thread should kill itself, so return error
+    } else {  // Successful
+      thread_chld_add(th, tid); // Add child to children process table
+    }
   }
 
   return tid;
@@ -152,11 +156,13 @@ start_process (void *command_)
   palloc_free_page (cmd.cmd_str); // Free page
   free(cmd.argv);  // Free dynamically allocated array
   if (!success) {
+    th->exit_status = TID_ERROR;
     sema_up(&(th_parent->launched));
     thread_exit ();
   }
 
   // Signal the thread was launched
+  th->exit_status = 0;
   sema_up(&(th_parent->launched));
 
   /* Start the user process by simulating a return from an
