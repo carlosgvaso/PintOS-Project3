@@ -301,10 +301,13 @@ pid_t sys_exec (const char *cmd_line) {
   pid_t pid = -1;
   uint8_t buf_size;
 
-  // TODO: Fix this to check 1st and last byte of buffer
   // Check for bad FILE pointer
-  //buf_size = strlen(file);
-  buf_size = 1;
+  if (cmd_line != NULL) {
+    buf_size = (uint8_t)(strlen(cmd_line) + 1);
+  } else {
+    sys_exit(SYSCALL_EXIT_ERR);
+    return (pid);
+  }
   if (!is_valid_read_pt((void *)cmd_line, buf_size)) {
     sys_exit(SYSCALL_EXIT_ERR);
     return (pid);
@@ -373,10 +376,13 @@ bool sys_create (const char *file, unsigned initial_size) {
   bool created = false;
   uint8_t buf_size;
 
-  // TODO: Fix this to check 1st and last byte of buffer
   // Check for bad FILE pointer
-  //buf_size = strlen(file);
-  buf_size = 1;
+  if (file != NULL) {
+    buf_size = (uint8_t)(strlen(file) + 1);
+  } else {
+    sys_exit(SYSCALL_EXIT_ERR);
+    return (created);
+  }
   if (!is_valid_read_pt((void *)file, buf_size)) {
     sys_exit(SYSCALL_EXIT_ERR);
     return (created);
@@ -401,10 +407,13 @@ bool sys_remove (const char *file) {
   bool removed = false;
   uint8_t buf_size;
 
-  // TODO: Fix this to check 1st and last byte of buffer
   // Check for bad FILE pointer
-  //buf_size = strlen(file);
-  buf_size = 1;
+  if (file != NULL) {
+    buf_size = (uint8_t)(strlen(file) + 1);
+  } else {
+    sys_exit(SYSCALL_EXIT_ERR);
+    return (removed);
+  }
   if (!is_valid_read_pt((void *)file, buf_size)) {
     sys_exit(SYSCALL_EXIT_ERR);
     return (removed);
@@ -441,10 +450,13 @@ int sys_open (const char *file) {
   struct file *file_pt;
   uint8_t buf_size;
 
-  // TODO: Fix this to check 1st and last byte of buffer
   // Check for bad FILE pointer
-  //buf_size = strlen(file);
-  buf_size = 1;
+  if (file != NULL) {
+    buf_size = (uint8_t)(strlen(file) + 1);
+  } else {
+    sys_exit(SYSCALL_EXIT_ERR);
+    return (fd);
+  }
   if (!is_valid_read_pt((void *)file, buf_size)) {
     sys_exit(SYSCALL_EXIT_ERR);
     return (fd);
@@ -470,7 +482,7 @@ int sys_filesize (int fd) {
   struct thread *th = thread_current();
   
   // Check the file descriptor exists in the FDT
-  if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
+  if (fd < 0 || fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
     sys_exit(SYSCALL_EXIT_ERR);
     return (size);
   }
@@ -527,7 +539,7 @@ int sys_read (int fd, void *buffer, unsigned size) {
   }
 
   // Check the file descriptor exists in the FDT
-  if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
+  if (fd < 0 || fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
     sys_exit(SYSCALL_EXIT_ERR);
     return (rb);
   }
@@ -583,7 +595,7 @@ int sys_write(int fd, void *buffer, unsigned size) {
   }
 
   // Check the file descriptor exists in the FDT
-  if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
+  if (fd < 0 || fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
     sys_exit(SYSCALL_EXIT_ERR);
     return (wb);
   }
@@ -612,9 +624,8 @@ int sys_write(int fd, void *buffer, unsigned size) {
 void sys_seek (int fd, unsigned position) {
   struct thread *th = thread_current();
   
-  // TODO: See if check is necessary
   // Check the file descriptor exists in the FDT
-  if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
+  if (fd < 0 || fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
     sys_exit(SYSCALL_EXIT_ERR);
   }
 
@@ -632,9 +643,8 @@ unsigned sys_tell (int fd) {
   unsigned result = 0;
   struct thread *th = thread_current();
   
-  // TODO: See if check is necessary
   // Check the file descriptor exists in the FDT
-  if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
+  if (fd < 0 || fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
     sys_exit(SYSCALL_EXIT_ERR);
     return (result);
   }
@@ -655,9 +665,8 @@ unsigned sys_tell (int fd) {
 void sys_close (int fd) {
   struct thread *th = thread_current();
   
-  // TODO: See if check is necessary
   // Check the file descriptor exists in the FDT
-  if (fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
+  if (fd < 0 || fd >= th->fd_tab_next || th->fd_tab[fd] == NULL) {
     sys_exit(SYSCALL_EXIT_ERR);
   }
 

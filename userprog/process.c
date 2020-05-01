@@ -690,7 +690,7 @@ setup_stack (cmd_t *cmd, void **esp)
         // Add return address to stack
         *esp -= 4;    // Move top of stack to fit a word
         espword--;    // Move pointer to fit a word
-        *espword = 0; // TODO: Add return address to stack
+        *espword = 0; // Add false return address to stack
       }
       else {
         palloc_free_page (kpage);
