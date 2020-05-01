@@ -250,9 +250,48 @@ process_exit (void)
       pagedir_destroy (pd);
     }
 
+  // Release TCB and any other thread resources
+
+  // Close any open files in the FDT
+  for (int i=((cur->fd_tab_next)-1); i>=0; --i) {
+    // Check if there is a file open with that FD
+    if (cur->fd_tab[i] != NULL) {
+      // Close file
+      lock_acquire(&fs_lock);
+      file_close (cur->fd_tab[i]);
+      lock_release(&fs_lock);
+      
+      // Remove file from FDT
+      if (i > 2) {  // Normal files
+        thread_fd_remove(cur, i);
+      } else {  // Stdin, stdout and stderr
+        cur->fd_tab[i] = NULL;
+      }
+    }
+  }
+  cur->fd_tab_next = 3;
+
+  // Allow children to exit after this process (the parent) exits
+  for (int i=((cur->tid_chld_next)-1); i>=0; --i) {
+    if (cur->tid_chld[i] != -1) {
+      struct thread *th_chld = thread_get_tcb_by_tid(cur->tid_chld[i]);
+      if (th_chld != NULL) {
+        sema_up(&(th_chld->reaped));
+      }
+    }
+  }
+  cur->tid_chld_next = 0;
+
+  // Close the executable file to allow writing to it again
+  if (cur->exec_file != NULL) {
+    lock_acquire(&fs_lock);
+    //file_allow_write(cur->exec_file);
+    file_close (cur->exec_file);
+    lock_release(&fs_lock);
+  }
+  
   sema_up(&(cur->exiting));
   sema_down(&(cur->reaped));
-  // TODO: Release TCB and any other thread resources if needed
 }
 
 /* Sets up the CPU for running user code in the current
@@ -368,12 +407,21 @@ load (cmd_t *cmd, void (**eip) (void), void **esp)
   const char *file_name = cmd->argv[0];
 
   /* Open executable file. */
+  lock_acquire(&fs_lock);
   file = filesys_open (file_name);
+
   if (file == NULL)
     {
       printf ("load: %s: open failed\n", file_name);
       goto done;
     }
+
+  /* Prevent other threads from overwriting the file while we load it, and save
+   * the file struct so we can allow writes and close the file when the process
+   * ends execution.
+   */
+  file_deny_write(file);
+  t->exec_file = file;
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -458,7 +506,8 @@ load (cmd_t *cmd, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  lock_release(&fs_lock);
+
   return success;
 }
 

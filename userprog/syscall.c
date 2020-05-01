@@ -44,9 +44,6 @@ static const uint8_t syscall_argc[20] = {
   0   // SYS_INUMBER
 };
 
-// Lock to limit access to the filesystem to a single thread
-struct lock fs_lock;
-
 static void syscall_handler (struct intr_frame *);
 void sys_halt (void);
 void sys_exit (int status);
@@ -97,6 +94,13 @@ syscall_handler (struct intr_frame *f UNUSED)
   for (int i=0; i<syscall_argc[callNo]; ++i) {
     // Move pointer down 1 word
     user_esp++;
+
+    // Check we don't access kernel memory
+    if ((void *)user_esp >= PHYS_BASE) {
+      // We went over the PHYS_BASE, so kill the user process
+      sys_exit(-1);
+    }
+
     // Save argument value to argv
     argv[i] = (uint32_t)(*user_esp);
   }
@@ -193,7 +197,7 @@ static bool is_valid_read_pt(void *buffer, int size) {
   }
 
   // Check if pointer is below PHYS_BASE
-  if (buffer >= PHYS_BASE) {
+  if (buffer >= PHYS_BASE || buffer+size >= PHYS_BASE) {
     return false;
   }
   
@@ -203,7 +207,7 @@ static bool is_valid_read_pt(void *buffer, int size) {
   }
   
   if (size > 1) {
-    for (int i=0; i<size; ++i) {  // Move pointer to last byte in buffer
+    for (int i=0; i<size-1; ++i) {  // Move pointer to last byte in buffer
       ++pt;
     }
 
@@ -234,7 +238,7 @@ static bool is_valid_write_pt(void *buffer, int size) {
   }
 
   // Check if pointer is below PHYS_BASE
-  if (buffer >= PHYS_BASE) {
+  if (buffer >= PHYS_BASE || buffer+size >= PHYS_BASE) {
     return false;
   }
   
@@ -244,7 +248,7 @@ static bool is_valid_write_pt(void *buffer, int size) {
   }
   
   if (size > 1) {
-    for (int i=0; i<size; ++i) {  // Move pointer to last byte in buffer
+    for (int i=0; i<size-1; ++i) {  // Move pointer to last byte in buffer
       ++pt;
     }
 

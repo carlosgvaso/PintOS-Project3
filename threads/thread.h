@@ -97,10 +97,11 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;          /* Page directory. */
-    struct file *fd_tab[20];    // File descriptor table
+    struct file *exec_file;     // Excecutable file `struct file`
+    struct file *fd_tab[128];   // File descriptor table
     int fd_tab_next;            // Next entry in the fd table
     tid_t tid_parent;           // TID of the parent thread
-    tid_t tid_chld[20];         // Array of children TIDs
+    tid_t tid_chld[48];         // Array of children TIDs
     int tid_chld_next;          // Next entry in the children array
     int32_t exit_status;        // Process exit status
     struct semaphore launched;  // Process launched semaphore

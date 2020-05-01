@@ -619,7 +619,7 @@ struct thread *thread_get_tcb_by_tid(tid_t tid) {
  */
 bool  thread_chld_add(struct thread *th, tid_t tid) {
   // Check if the table is full
-  if (th->tid_chld_next > 20) {
+  if (th->tid_chld_next > 48) {
     return (false);
   }
   
@@ -682,7 +682,7 @@ int  thread_fd_add(struct thread *th, struct file *f) {
   int fd;
 
   // Check if the table is full
-  if (th->fd_tab_next > 20) {
+  if (th->fd_tab_next > 128) {
     return (-1);
   } else if (th->fd_tab_next < 3) {
     return (-1);
@@ -712,15 +712,15 @@ bool  thread_fd_remove(struct thread *th, int fd) {
   // Check fd is inside the table
   if (fd >= th->fd_tab_next) {
     return (false);
-  } else if (fd < 3) {
+  } else if (fd < 3 || fd > 128) {
     return (false);
   }
 
   // Remove struct for the fd
   th->fd_tab[fd] = NULL;
 
-  // Reduce FD_TAB_NEXT if needed
-  for (int i=((th->fd_tab_next)-1); i>=0; --i) {
+  // Reduce FD_TAB_NEXT if needed, but never reduce past fd_tab_next = 3
+  for (int i=((th->fd_tab_next)-1); i>2; --i) {
     // Check if fd has a struct
     if (th->fd_tab[i] == NULL) {
       // Entry is NULL, so reduce counter
