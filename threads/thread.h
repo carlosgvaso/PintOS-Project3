@@ -97,7 +97,7 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;          /* Page directory. */
-    struct file *exec_file;     // Excecutable file `struct file`
+    struct file *exec_file;     // Executable file `struct file`
     struct file *fd_tab[128];   // File descriptor table
     int fd_tab_next;            // Next entry in the fd table
     tid_t tid_parent;           // TID of the parent thread

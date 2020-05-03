@@ -28,14 +28,19 @@ Utkarsh Vardan <uvardan@utexas.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
-typedef struct cmd_ {
-  char *cmd_str;
-  char **argv;
-  int argc;
-} cmd_t;
+* `process.c':
 
-It holds the parsed user command, and a way to easily access each command
-argument to load it into the stack.
+  * Struct to hold the parent TID, parsed user command, and a way to easily
+    access each command argument to load it into the stack:
+
+    ```
+    typedef struct cmd_ {
+      tid_t tid_parent;
+      char *cmd_str;
+      char **argv;
+      int argc;
+    } cmd_t;
+    ```
 
 
 ---- ALGORITHMS ----
@@ -46,11 +51,11 @@ argument to load it into the stack.
 
 We parse the string containing the arguments inside the `process_execute()`
 function in `process.c`, and we save the results into the `cmd_` struct defined
-in `process.h`. The arguments are parsed by using `strtok_r()` to tokenize the
-original command string in place (`cmd_str`), saving the pointers pointing to
-the initial character of each token (argument) in an array (`argv`), and
-keeping a count of the total number tokens (arguments) found (`argc`). All this
-is organized in the `cmd_` struct for easy passing to the functions that
+in `process.c`. The arguments are parsed by using `strtok_r()` in a loop to
+tokenize the original command string in place (`cmd_str`), saving the pointers
+pointing to the initial character of each token (argument) in an array `argv`,
+and keeping a count of the total number tokens (arguments) found in `argc`. All
+this is organized in the `cmd_` struct for easy passing to the functions that
 require it. By tokenizing, we mean to break the command string into white-space
 separated tokens or words, which are considered as the command arguments.
 
@@ -58,31 +63,32 @@ By saving the parsed command in a struct, we can pass the command struct as the
 argument to `start_process()`. Then, `start_process()` saves the struct to a
 local variable of its thread, and it passes a pointer to the struct to
 `load()`. The `load()` function uses the first argument to load the program
-binary, and it passes the pointer to the command struct to `setup_stack()`,
-which loads the arguments into the stack as per the requirements.
+binary, and it passes the command struct pointer to `setup_stack()`, which
+loads the arguments into the stack as per the requirements.
 
-Loading the aruguments into the stack is done by writing from the PHYS_BASE
-down the argument strings in reverse order (last argument gets written first).
-For this, we point the ESP to the PHYS_BASE, and we decrement it by the length
-of the argument to be written to the stack, which we can get using
+Loading the arguments into the stack is done by writing the argument strings in
+reverse order (last argument gets written first) from the PHYS_BASE down. For
+this, we point the ESP to the PHYS_BASE, and we decrement it by the length of
+the argument to be written to the stack, which we can get using
 `strlen(cmd->argv[i])`. Then, we write the argument to the stack location
-pointed by ESP, and repeat it for the rest of the arguments in a loop form the
+pointed by ESP, and repeat it for the rest of the arguments in a loop from the
 last argument `cmd->argv[cmd->argc-1]` to the first `cmd->argv[0]`.
 
 Then, we add any necessary padding to align the `argv` array in the stack as
-calculated by the following formula: `(aling - (offset mod aling)) mod aling`.
-The modulus operator is represented as `mod`, `aling` is the 4-byte alingment
+calculated by the following formula: `(align - (offset mod align)) mod align`.
+The modulus operator is represented as `mod`, `align` is the 4-byte alignment
 required by the x86 architecture, and `offset` is the total length of the
 command string in the stack including all the `\0` characters. We also
 decrement the ESP by any padding characters added to the stack.
 
-Then, we set a NULL pointer to represent the end of the `argv` array as
+Then, we set a `NULL` pointer to represent the end of the `argv` array as
 required by the x86 architecture, and we load pointers to the beginning
 character of each argument previously loaded to the stack in reverse order
-(last argument first). Also, we add a pointer (`argv`) to the first entry of
-the array (`argv[0]`). Before we add each `argv` pointer entry, we decrement
-the ESP in word increments each time a pointer is going to be added to the
-stack (including the NULL pointer).
+(last to first argument). Also, we add a pointer (`argv`) to the first entry of
+the array (`argv[0]`). Similarly as with the other elements added to the stack,
+we decrement the ESP in word increments (`uint32_t`) each time a pointer is
+going to be added to the stack (including the NULL pointer) before we add each
+`argv` pointer entry.
 
 Finally, we add `argc` and the return address as separate words to the stack,
 and we decrement the ESP by 2 words to point to the return address. As
@@ -91,12 +97,13 @@ practice, so we can use it to know where in the stack we should begin to write.
 
 To avoid overflowing the stack page, we could keep a count of the amount of
 data written to the stack page (e.i. command string, argv, argc, etc), and
-loading another page if we fill up the initial page (write 4kB to the page).
+load it in another page if we fill up the initial page (write 4kB to the page).
 Since we know the page size (4kB), any data over that limit should go to the
 second page. Moreover, if we have more data than it fits in 2 pages, we can
 load it in as many other pages that we need. Finally, we probably need to
-devise a way for the pages to be read in order. This ca be done by ading a
-pointer in the end of a page to the address of the beginning of the new page.
+devise a way for the pages to be read in order. This can be done by adding a
+pointer in the end of a page to the address of the beginning of the new page,
+and vice versa.
 
 
 ---- RATIONALE ----
@@ -110,7 +117,7 @@ store its current position in the string in a global or static variable, as
 this variable might get overwritten by a call to `strtok()` by another thread.
 This is why `strtok_r()` requires an extra argument to save its current
 position in the string in a local variable of the thread, which makes
-`strtoc_r()` re-entrant and thread-safe.
+`strtok_r()` re-entrant and thread-safe.
 
 
                              SYSTEM CALLS
@@ -122,69 +129,128 @@ position in the string in a local variable of the thread, which makes
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
-Max number of arguments that a syscall takes.
+* `syscall.h`:
 
-#define SYSCALL_ARGC_MAX 3
+  * Definition of the standard error code for a system call error, such as
+    passing a bad argument to a system call:
 
+    ```
+    #define SYSCALL_EXIT_ERR -1 // System call error exit code
+    ```
 
-Table to map a system call with the number of arguments it takes.
+* `syscall.c`:
 
-static const uint8_t syscall_argc[20] = {
-  0,  // SYS_HALT
-  1,  // SYS_EXIT
-  1,  // SYS_EXEC
-  1,  // SYS_WAIT
-  2,  // SYS_CREATE
-  1,  // SYS_REMOVE
-  1,  // SYS_OPEN
-  1,  // SYS_FILESIZE
-  3,  // SYS_READ
-  3,  // SYS_WRITE
-  2,  // SYS_SEEK
-  1,  // SYS_TELL
-  1,  // SYS_CLOSE
-  0,  // SYS_MMAP
-  0,  // SYS_MUNMAP
-  0,  // SYS_CHDIR
-  0,  // SYS_MKDIR
-  0,  // SYS_READDIR
-  0,  // SYS_ISDIR
-  0   // SYS_INUMBER
-};
+  * Max number of arguments that a syscall takes:
 
+    ```
+    #define SYSCALL_ARGC_MAX 3
+    ```
 
-Lock to limit filesystem access to a single thread at a time.
+  * Table to map a system call with the number of arguments it takes:
 
-struct lock fs_lock;
+    ```
+    static const uint8_t syscall_argc[20] = {
+      0,  // SYS_HALT
+      1,  // SYS_EXIT
+      1,  // SYS_EXEC
+      1,  // SYS_WAIT
+      2,  // SYS_CREATE
+      1,  // SYS_REMOVE
+      1,  // SYS_OPEN
+      1,  // SYS_FILESIZE
+      3,  // SYS_READ
+      3,  // SYS_WRITE
+      2,  // SYS_SEEK
+      1,  // SYS_TELL
+      1,  // SYS_CLOSE
+      0,  // SYS_MMAP
+      0,  // SYS_MUNMAP
+      0,  // SYS_CHDIR
+      0,  // SYS_MKDIR
+      0,  // SYS_READDIR
+      0,  // SYS_ISDIR
+      0   // SYS_INUMBER
+    };
+    ```
 
+* `process.h`:
 
-Kernel thread state struct. We added a file descriptor table, a next entry
-index, place to save a process exit status, and semaphores.
+  * Lock to limit filesystem access to a single thread at a time:
 
-struct thread
-  {
-    /* Owned by thread.c. */
-    tid_t tid;                          /* Thread identifier. */
-    enum thread_status status;          /* Thread state. */
-    char name[16];                      /* Name (for debugging purposes). */
-    uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
-    struct list_elem allelem;           /* List element for all threads list. */
+    ```
+    struct lock fs_lock;
+    ```
 
-    /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+* `threads.h`:
 
-#ifdef USERPROG
-    /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
-    int32_t exit_status;                // Process exit status
-    struct file *fd_tab[20];            // File descriptor table
-    int fd_tab_next;                    // Next entry in the fd table
-#endif
+  * Kernel thread state and information struct:
 
-    /* Owned by thread.c. */
-    unsigned magic;                     /* Detects stack overflow. */
-  };
+    ```
+    struct thread
+      {
+        /* Owned by thread.c. */
+        tid_t tid;                          /* Thread identifier. */
+        enum thread_status status;          /* Thread state. */
+        char name[16];                      /* Name (for debugging purposes). */
+        uint8_t *stack;                     /* Saved stack pointer. */
+        int priority;                       /* Priority. */
+        struct list_elem allelem;           /* List element for all threads list. */
+    
+        /* Shared between thread.c and synch.c. */
+        struct list_elem elem;              /* List element. */
+    
+    #ifdef USERPROG
+        /* Owned by userprog/process.c. */
+        uint32_t *pagedir;          /* Page directory. */
+        struct file *exec_file;     // Executable file `struct file`
+        struct file *fd_tab[128];   // File descriptor table
+        int fd_tab_next;            // Next entry in the fd table
+        tid_t tid_parent;           // TID of the parent thread
+        tid_t tid_chld[48];         // Array of children TIDs
+        int tid_chld_next;          // Next entry in the children array
+        int32_t exit_status;        // Process exit status
+        struct semaphore launched;  // Process launched semaphore
+        struct semaphore exiting;   // Process exiting semaphore
+        struct semaphore reaped;    // Process exit status reaped semaphore
+    #endif
+    
+        /* Owned by thread.c. */
+        unsigned magic;                     /* Detects stack overflow. */
+      };
+    ```
+
+    * `struct file *exec_file`: Pointer to the open executable file running in
+      the thread to prevent over-writing it during execution.
+
+    * `struct file *fd_tab[128]`: File Descriptor Table of the process which
+      allows to refer to the open files by their File Descriptor in system
+      calls.
+
+    * `int fd_tab_next`: Index of the next available File Descriptor in the
+      File Descriptor Table to help adding and removing files to the table.
+
+    * `tid_t tid_parent`: Thread ID of the parent of the this process to allow
+      to access the `launched` semaphore during a process launch.
+
+    * `tid_t tid_chld[48]`: Children Thread/Process Table to keep track of
+      children process TIDs to access their `exiting` and `reaped` semaphores
+      during process exit.
+
+    * `int tid_chld_next`: Index of the next available Child Thread/Process
+      Table entry to help adding and removing TIDs to the table.
+
+    * `int32_t exit_status`: Variable to save the exit status of the process,
+      so the parent process can reap the exit status of their children
+      processes.
+
+    * `struct semaphore launched`: Semaphore to coordinate the launch/start of
+      a process between the parent and child being spawn processes.
+
+    * `struct semaphore exiting`: Semaphore to coordinate phase 1 of the
+      2-phase exit of a child process with its parent process.
+
+    * `struct semaphore reaped`: Semaphore to coordinate phase 2 of the
+      2-phase exit of a child process with its parent process.
 
 
 >> B2: Describe how file descriptors are associated with open files.
@@ -192,23 +258,68 @@ struct thread
 >> single process?
 
 File descriptors are associated with open files using the File Descriptor Table
-(`thread.fd_tab`), which is a member of the `struct thread`. The FDT is an
-array of `struct file` pointers. The file descriptor of a file is the index at
-which the pointer for the file's `struct file` is saved. Therefore, we can
-get a file's `struct file` from the FDT by reading the `thread.fd_tab` array at
-the index indicated by the file's file descriptor. Since the FDT is a member of
-the `struct thread` the file descriptors are unique within a single process,
-and they are not unique within the entire OS. Also, the FDT will always have 3
-special file descriptors populated 0 (stdin), 1 (stdout) and 2 (stderr), which
-are NULL, and they are handled differently than the rest of file descriptors by
-the system calls. The 0 to 2 file descriptors are loaded when a thread is first
-run in the `start_thread()` function.
+(FDT stored at `thread.fd_tab`), which is a member of the `struct thread`. The
+FDT is an array of `struct file` pointers. The file descriptor of a file is the
+index at which the pointer for the file's `struct file` is saved in the array.
+Therefore, we can get a file's `struct file` from the FDT by reading the
+`thread.fd_tab` array at the index indicated by the file's file descriptor
+(FD). The first 3 FDs are special, and they are always initialized as `NULL`
+pointers at `start_process()`. The represent the OS standard I/O: stdin (0),
+stdout (1) and stderr (2). System calls will handle these FDs in a different
+way than the other FDs.
+
+In order to make it easier to manage the FDT, we developed functions to add and
+remove files from the FDT. The `thread_fd_add()` function in `thread.c` adds a
+file to the FDT by adding its `struct file` to next available entry in the
+table, and it increments the `thread.fd_tab_next` index accordingly. The
+`thread_fd_remove()` removes a file from the FDT by setting is entry in the
+table to `NULL`, and decrementing the `thread.fd_tab_next` index if needed.
+
+Since the FDT is a member of the `struct thread`, the file descriptors for our
+implementation are unique within a single process, and they are not unique
+within the entire OS. We decided to use the process based implementation of the
+FDT to allow isolation of the files that a process has open from the other
+processes. However, our implementation allows for 2 different processes to open
+the same file at the same time.
 
 
 ---- ALGORITHMS ----
 
 >> B3: Describe your code for reading and writing user data from the
 >> kernel.
+
+To read and write user data from the kernel, we have to first pop it out of the
+stack. For example, the user might do a system call, and the user loads the
+call stack with all the arguments needed before starting the system call
+interrupt. Then, we use the `syscall_handler()` to figure out how many
+arguments are in the stack from a table that maps the system call number to the
+number of arguments it takes. Then, we iterate over the number of arguments to
+extract the call number and argv. The procedure is as follows:
+
+1. The first thing the ESP is pointing is the call number. Save that.
+
+2. Iterate from 0 to the number of arguments:
+
+  2.1. Increase ESP by 1 word.
+
+  2.2. Check we did not went over the PHYS_BASE:
+
+    2.2.1. If we did go over, call `sys_exit(-1)`.
+
+  2.3. Save argument to argv.
+
+Then, call the correct system call according to the call number that we got
+with the arguments that we got from the stack.
+
+Some system calls might read/write user data, like `read()` or `write()`. These
+calls check the pointers they got passed, and they use the `filesys` and `file`
+libraries provided with PintOS to read any files.
+
+Other system calls might cause the execution of a user file, which means the
+user data to execute must be loaded to the kernel for execution. This happens
+when `start_process()` calls `load()` to load the executable and to set up the
+stack with the command arguments using `setup_stack()`.
+
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
@@ -217,8 +328,65 @@ run in the `start_thread()` function.
 >> for a system call that only copies 2 bytes of data?  Is there room
 >> for improvement in these numbers, and how much?
 
+For data to be loaded from the user space to the kernel a user process must
+have been launched, and its executable and stack must be set. For that, `load()`
+from `process.c` is run. `load()` calls `load_segment()` as many times as pages
+of data the executable takes. In this case, it seems that this is 1 page, so it
+gets called once. `load_segment()` calls `install_page()` as many times as
+pages need to be loaded, which in our case is 1 time. Finally, `install_page()`
+calls `pagedir_get_page() once. Thus, at this point we have 1 or 0 (something
+failed that prevented data to be loaded) inspections.
+
+`load()` also might call `setup()` stack once, which in term it calls
+`install_page()` once or 0 (if it can allocate a page) times. Finally,
+`install_page()` calls `pagedir_get_page() once. Thus, at this point we have 1
+or 0 inspections.
+
+We have an upper bound of 2 inspections, and a lower bound of 0.
+
+If it only copies 2 bytes of data, we get the same number of inspections.
+
+load -_> load_segment -> install_page -> pagedir_get_page
+     |-> setup_stack -|
+
+
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+
+When a parent process calls `wait()` on a child process, `sys_wait()` gets run,
+which just calls `process_wait()`. `process_wait()` implements all of the
+functionality required for the `wait()` system call. It checks the parent's
+Children TID/PID Table in its Process/Thread Control Block (PCB/TCB) to ensure
+the PID provided is actually the PID of a child process. It returns `-1` if it
+is not a child, which makes `wait()` to return the same value. If it is a
+child, it gets the child PCB to have access to the child's `exiting` and
+`reaped` semaphores. After that, it does a `sema_down()` on the child's
+`exiting` semaphore to wait on the child to start exiting.
+
+The `exiting` and `reaped` semaphores in the child's PCB are used to
+synchronize the child's exit. They ensure the parent can reap the child's
+`exit_status` before the child releases its PCB where the `exit_status` is
+stored. This works by doing a 2-way-handshake-like procedure. It works as
+follows:
+
+1. The parent does a `sema_down()` on `exiting` to wait for the child to start
+   exiting, and populate its `exit_status`.
+
+2. The child does a `sema_up()` after it starts exiting, and has populated its
+   `exit_status`. Then, the child does a `sema_down()` on `reaped` to wait for
+   the parent to reap the `exit_status`.
+
+3. The `sema_up()` on `exiting` wakes up the parent, which reaps the child's
+   `exit_status`. Then, the parent does a `sema_down()` on `reaped` to let the
+   child know it got the `exit_status`.
+
+4. The `sema_up()` on `reaped` wakes up the child, which releases its PCB, and
+   it terminates.
+
+Finally, the parent removes the child from the Children TID/PID Table, and it
+returns the child's `exit_status`. This method allows coordination between a
+waiting parent and child processes in all cases.
+
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the
@@ -234,12 +402,131 @@ run in the `start_thread()` function.
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
+In order to avoid obscuring the primary function of the code with a lot of
+error-handling code, I made sure to check every argument passed by the user
+through the stack of the system call before using them to carry out the system
+call functions. If a check was more complicated that a couple of if-statements,
+we moved the check to its own function, which could be easily reused in other
+system calls that require the same check.
+
+One of the checks implemented checks that any file descriptors (FDs) passed
+to a system call were in the process' File Descriptor Table (FDT), and if they
+were not 0 (stdin), 1 (stdout) or 2 (stderr), it checks that their entries in
+the FDT were not `NULL`. If this check did not pass, the system call did not
+carry out its primary function, and the process was terminated. For example,
+calling `filesize()` with an `fd` parameter of value 4, when there is no FD 4
+in the FDT, will cause the system call to terminate the process that called it.
+
+Other check implemented checks that any `size` parameters passed to a system
+call that uses them (`read()` and `write()` calls) are larger than `0`. The
+`size` parameter cannot be smaller than `0` because they are of type
+`unsigned`. Thus, we do not need to handle that. If the `size` is `0` the
+system calls return without carrying out their primary purpose with a return
+value of `0`. Here the calling process is not terminated. For example, if a
+user process calls `write()` with a `size` parameter of `0`, the `write()` call
+will immediately return a value of `0`.
+
+The last check implemented is a check or pointers passed by the user to read or
+write buffers. These checks are more complex than the others, so they were
+moved to their own functions: `is_valid_read_pt()` to check if the pointer
+directs to a valid buffer that we can read, and `is_valid_write_pt()` to check
+the pointer directs to a valid buffer that we can write. The former function
+checks the buffer is not `NULL`, it makes sure the whole buffer is inside the
+user memory space by comparing its first and last addresses with the PHYS_BASE,
+and then it checks that we can read the first and last addressed of the buffer
+without causing a page fault exception. If a page fault exception is caused, we
+know that the access is not allowed and the pointer is not valid. Thus, we
+modified the page fault code to terminate the user process when a page fault
+exception occurs. The `is_valid_write_pt()` function does the same checks as
+the read one, but it tries to write to the first and last bytes of the buffer,
+instead of reading them. The read and write operations to the buffer are done
+using the `get_user()` and `put_user()` functions provided in the project
+manuscript. The buffer size in bytes must be provided to the
+`is_valid_read_pt()`/`is_valid_write_pt()` functions as a parameter. This is
+easy to do for calls like `read()` or `write()` which provide you the number of
+bytes to be written to or read from the buffer. However, some calls like
+`exec()` do not provide the buffer size in bytes. For those calls, we first
+check that the buffer is not `NULL` (and kill the calling process if it is),
+and then, we use the provided `strlen()` function to get the size of the string
+buffer, since the parameters of this type are all strings (`const char *` or
+`char *` types). Note that `strlen() will cause a page fault exception if the
+pointer to the buffer is not valid, which terminates the calling process. For
+example, if we call `exec()` with a bad pointer value for its parameter, the
+`strlen()` will likely cause a page fault exception (if not the
+`is_valid_read_pt()` function will) terminating the calling process.
+
+Finally, the allocated resources (locks, buffers, etc.) are freed when the
+process is terminated. The processes are terminated by calling
+`sys_exit(SYSCALL_EXIT_ERR)` when any of the previously mentioned problems are
+caught by the checks. This is the same procedure as it would happen if the user
+called `exit()`, which allows to free all the process' resources. The
+`sys_exit()` call sets the process exit status, so it can be reaped by the
+parent process. Then, it calls `thread_exit()`, which calls `process_exit()` to
+release all of the process resources, and then, removes the thread and
+it releases its resources.
+ 
+
 ---- SYNCHRONIZATION ----
 
 >> B7: The "exec" system call returns -1 if loading the new executable
 >> fails, so it cannot return before the new executable has completed
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
+
+We use the launched semaphore in the parent process Thread/Process Control
+Block (TCB/PCB) which is implemented in the `thread struct` in `thread.h`. A
+process is launched as follows:
+
+1. The `exec()` system call checks the arguments, and it calls
+   `process_execute()` with the command.
+
+2. `process_execute()` parses the command into the `struct cmd_`, and it adds
+   the parent process (itself) PID/TID (PIDs are mapped one-to-one with TIDS)
+   to the `struct cmd_`. We will refer to the parent process as the process
+   that called `exec()`, and we will refer to the child process as the process
+   that was spawned as a result of the `exec()` call.
+
+3. Next in `process_execute()`, the parent initializes the `launched` semaphore
+   in its PCB.
+
+4. Next in `process_execute()`, it starts launching the child process by
+   calling `thread_create()` with the thread function `start_process()` and the
+   struct cmd_` as the argument. If `thread_create()` returns `TID_ERROR`
+   ('-1'), the thread was not able to launch, so we deallocate its resources,
+   and `process_execute()` returns `-1`, which causes `exec()` to also return
+   `-1`. If `thread_create()` returns a valid TID, we know the thread was
+   created, but we are not sure if the child process was able to load its
+   executable or not yet.
+   
+
+5. At this point the child process thread might start running, or the parent
+   might continue running. To avoid the parent form returning before we
+   ensuring that the child was able to load its executable file, the parent
+   does a `sema_down()` on the parent's PCB `launched` semaphore, and it waits.
+
+6. Once the child thread gets scheduled and it starts running,
+   `start_process()` starts running. It initializes the child process PCB, and
+   tries to load the executable.
+
+7. If loading the executable fails, `start_process()` sets its `exit_status` in
+   its PCB to `-1`. Then, it uses the parent PID that it got passed in the
+   `struct cmd_` to get the parent's PCB. Then, it does a `sema_up()` using the
+   parent's `launched` semaphore to wake up the parent, and it performs a
+   `thread_exit()` to exit the child process and release its resources. When
+   the parent is woken up by the `sema_up()`, it checks the `exit_status` of
+   the child, and it sees that the child failed to load its executable. Thus,
+   it returns `-1`, which makes `exec()` to return `-1`.
+
+8. If loading the executable succeeds, `start_process()` sets the child
+   `exit_status` to `0`. Then, it uses the parent PID that it got passed in the
+   `struct cmd_` to get the parent's PCB. Then, it does a `sema_up()` using the
+   parent's `launched` semaphore to wake up the parent, and it starts the
+   user process by simulating a return from an interrupt. When the parent is
+   woken up by the `sema_up()`, it checks the `exit_status of the child, and it
+   sees that the child succeeded to load its executable. Thus, it returns the
+   child's PID/TID, which makes `exec()` to return the child's PID/TID.
+
+
 
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
@@ -248,18 +535,101 @@ run in the `start_thread()` function.
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
 
+When P calls `wait(C)` before C exits, `sys_wait(C)` gets executed, which calls
+`process_wait(C)`. `process_wait()` does a `sema_down()` on the child's
+`exiting` semaphore to wait on the child to start exiting. At this point, P is
+waiting for C to start exiting. Before C starts exiting, C's `exit_status` is
+`0` (successful), or it will be set in its PCB by a system call to
+`sys_exit()`. The function `process_exit()` will always get called before a
+process exits, and it indicates that a process is beginning to exit. When C
+begins to exit, `process_exit()` will deallocate its resources, do a
+`sema_up()` in C's `exiting` semaphore before deallocating its PCB, and do a
+`sema_down()` on its `reaped` semaphore. The `sema_up()` wakes up P, which
+reaps C's `exit_status`, and it does a `sema_up()` in C's `reaped` semaphore.
+This wakes up C which releases its PCB and terminates. This 2-way handshake
+implemented with semaphores allows P to reap C's `exit_status` before C
+releases all its resources. Moreover, C always releases its resources because
+`process_exit()` always gets called.
+
+In the case that P calls `wait(C)` after C exits, C runs `process_exit()`, it
+does a `sema_up()` on its `exiting` semaphore, and a `sema_down()` on its
+`reaped` semaphore, which causes C to wait. When P runs `wait(C)`, the same
+process as in the previous case starts happening, except that P does not wait
+when `process_wait()` reaches the `sema_down()` on C's `exiting` semaphore,
+because C already did a `sema_up()` on it. Then, P reaps C's `exit_status`, and
+it does a `sema_up()` on C's `reaped` semaphore. At this point, C can release
+its PCB, and terminate. Since `process_exit()` always gets called, all
+resources are freed.
+
+In the case when P terminates without waiting before C exits, `process_exit()`
+will get called in P which iterates over all its children to make sure they can
+exit without waiting for their `exit_status` to be reaped. This is done by
+maintaining a Child PID/TID Table in the PCB of parent process (P). When the
+parent exits, `process_exit()` iterates over all children in the table, and it
+does a `sema_up()` in their `reaped` semaphore. That way C will not wait when
+its `process_exit()` calls the `sema_down()` on its `reaped` semaphore.
+
+In the case when P terminates without waiting after C exits, C will call
+`process_exit()`, and it will wait when it reaches the `sema_down()` on its
+`reaped` semaphore. Then, P will start exiting, and it will call
+`process_exit()`. P will run a `sema_up()` on all of its children `reaped`
+semaphores. Thus, C can then release its PCB and terminate.
+
+There are no other special cases for any normal process/thread because
+`process_exit()` always gets called at the end of the life cycle or all
+processes regardless of how do they get to the end of their life cycle (even on
+page fault exceptions). However, the `init` thread/process (TID/PID of 1) is
+not a normal thread/process, and it will shut down PintOS on exit instead of
+calling `process_exit()`.
+
+
 ---- RATIONALE ----
 
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
+We chose the method were we check only that a user pointer points below
+PHYS_BASE, and then dereference it (an invalid user pointer will cause a page
+fault that we handle by modifying the code for `page_fault()`). We chose that
+method because this is the technique used in real kernels. Moreover, this
+technique is faster than others according to the project manuscript, and it is
+easier to implement. The other route would have entailed testing for every
+possible way the pointer provided by the user could not be valid, which is in
+our opinion harder than just performing an access.
+
+
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
+
+We designed file descriptors (FDs) as a per process flat table (array) of
+`struct file *`, where the index indicates the FD, and the entry is a pointer
+to the file that has that FD. The advantages of having a per process File
+Descriptor Table (FDT) are that the each process only has access to the files
+it opened, and they do not have access to files that other processes might have
+opened (like it would happen if we had a FDT shared with all of the processes).
+Moreover, different processes still can open the same file. This uses more
+memory in a per process FDT than in a global FDT because each process has to
+have an entry of the file in their FDT, while there can be only one entry of
+the file shared with multiple processes in a global FDT.
+
+Another trade-off we made was to make the FDT a static array (flat table)
+instead of a dynamic array, list or other dynamic data structure. We decided to
+go this route because it was much easier to implement. However, the static
+array is allocated when a process starts, and it uses all of its size in memory
+regardless of how many files are actually in the FDT until the process exits.
+We could make our FD implementation more memory efficient by using a dynamic
+data structure such as a dynamically allocated array or a list instead. That
+way the only FDT entries in memory are those that have an open file allocated
+to it, and the entries are deallocated (deleted from memory) as soon as a file
+gets taken out of the FDT.
+
 
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
 
-I did not change it.
+I did not change it because this is the easiest implementation. Moreover,
+processes in PintOS are implemented as threads, so it makes sense that their
+IDs are correlated as well.
 
 
                            SURVEY QUESTIONS
@@ -274,14 +644,34 @@ the semester.
 >> In your opinion, was this assignment, or any one of the three problems
 >> in it, too easy or too hard?  Did it take too long or too little time?
 
+I think this was a pretty hard but fun assignment. It covers so many topics
+that it became really long. I wouldn't have been able to finish it if it wasn't
+for the extension of the deadline. I would prefer if the assignment was broken
+down into smaller exercises.
+
+
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+
+The synchronization part of the assignment gave me a good insight of the way
+that processes are implemented in an OS in a way that I didn't get before this
+assignment.
+
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
 
+No, the help given was great.
+
+
 >> Do you have any suggestions for the TAs to more effectively assist
 >> students, either for future quarters or the remaining projects?
 
+No.
+
+
 >> Any other comments?
+
+No.
+
